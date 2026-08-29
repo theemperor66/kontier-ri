@@ -1,8 +1,9 @@
 import type { DashboardDoc } from "@/lib/dashboard-store";
+import { migrateDoc } from "@/lib/dashboard-store";
 
 /** Demo dashboard seeded from the public/demo CSVs (24 months of SaaS billing). */
 export function buildDemoDoc(mode: "dark" | "light"): DashboardDoc {
-  return {
+  return migrateDoc({
     title: "SaaS revenue overview",
     theme: { mode },
     filters: { filters: [], dateRange: null },
@@ -118,5 +119,5 @@ export function buildDemoDoc(mode: "dark" | "light"): DashboardDoc {
         annotations: [],
       },
     ],
-  };
+  });
 }

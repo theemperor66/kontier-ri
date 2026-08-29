@@ -9,13 +9,19 @@ export {
   createInitialDoc,
   autoLayout,
   genId,
+  migrateDoc,
+  withActivePageMirror,
   DASHBOARD_SCOPE,
   DEFAULT_TILE_SIZE,
+  V1_PAGE_ID,
 } from "@kontier-ri/studio";
 
 export type {
   ActionMeta,
   ActionResult,
+  CrossFilter,
+  DashboardDocInput,
+  Page,
   ActivityEntry,
   AddTileInput,
   Agg,

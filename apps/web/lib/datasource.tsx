@@ -25,6 +25,35 @@ export const dataSource = new DuckDBDataSource({
   bundlesBaseURL: withBasePath("/duckdb/"),
 });
 
+/**
+ * Uploaded datasets live in in-memory DuckDB and do NOT survive a reload,
+ * while dashboards (localStorage) do. Rewrite DuckDB's missing-table error
+ * into an actionable message so restored tiles explain themselves instead of
+ * surfacing a raw catalog error.
+ */
+const MISSING_TABLE_RE =
+  /Table with name (\S+) does not exist/i;
+
+function rewriteMissingDataset(err: unknown): unknown {
+  const msg = err instanceof Error ? err.message : String(err);
+  const m = MISSING_TABLE_RE.exec(msg);
+  const raw = m?.[1];
+  if (!raw) return err;
+  const name = raw.replaceAll('"', "").replaceAll("!", "");
+  return new Error(
+    `Dataset “${name}” is gone — uploads live only for this browser session. Re-upload ${name} (CSV/Parquet) to restore this tile.`,
+  );
+}
+
+const rawRunQuery = dataSource.runQuery.bind(dataSource);
+dataSource.runQuery = async (sql: string) => {
+  try {
+    return await rawRunQuery(sql);
+  } catch (err) {
+    throw rewriteMissingDataset(err);
+  }
+};
+
 const DEMO_FILES: { name: string; group: string }[] = [
   { name: "plans", group: "saas_billing" },
   { name: "customers", group: "saas_billing" },
