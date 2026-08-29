@@ -132,6 +132,19 @@ test("cross-filter: clicking a tile value sets the chip; clearing restores", asy
   await page.getByTestId("clear-cross-filter").click();
   await expect(chip).toHaveCount(0);
 
+  // Bar-chart click path (chart-level onClick reads recharts hover state,
+  // so hover first — real users always do).
+  const churnBar = page
+    .locator("[data-testid=tile-demo_chart_churn] .recharts-bar-rectangle")
+    .first();
+  await churnBar.hover();
+  await page.waitForTimeout(250);
+  await churnBar.click();
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText("month");
+  await page.getByTestId("clear-cross-filter").click();
+  await expect(chip).toHaveCount(0);
+
   // Selecting the table shows the selection toolbar; CSV export downloads.
   await table.click();
   await expect(page.getByTestId("selection-toolbar")).toBeVisible();
