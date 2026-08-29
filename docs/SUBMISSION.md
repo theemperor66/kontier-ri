@@ -13,7 +13,7 @@ on the same canvas, with your data never leaving the browser.
 BI tools are the canonical "deep UI" problem: dozens of menus, query builders,
 chart editors. Agents guessing their way through that UI fail; a headless API
 loses the human. WebMCP is the only architecture where the agent operates the
-*same live document* the human is looking at. Kontier RI registers 19 static +
+*same live document* the human is looking at. Kontier RI registers 32 static +
 3 selection-scoped dynamic tools from the page (`document.modelContext`), all
 zod-defined (one schema = runtime validation + JSON Schema), with tools mounted
 and unmounted by React component lifecycle. SQL runs in-page via DuckDB-WASM,
@@ -92,7 +92,7 @@ push to main via .github/workflows/deploy.yml (static export, basePath
 "BI tools bury you in menus. AI chatbots hand you static charts you can't touch.
 Kontier RI is what happens when you stop choosing: an open-source analytics
 studio where you and your AI agent work on the same canvas, at the same time.
-It's built on WebMCP — this page registers twenty-two structured tools that any
+It's built on WebMCP — this page registers thirty-five structured tools that any
 browser agent can call. And the data? It loads into DuckDB inside your browser.
 Raw rows never leave the page."
 
@@ -124,7 +124,7 @@ Strict schemas bounce it with a helpful error."
 **[2:25 — repo, README, AGPL badge, DataSource seam diagram]**
 "Kontier RI is AGPL open source, built on the exact stack of our billing
 product, Kontier — because this is the future analytics engine of a real SaaS.
-One interface swap connects it to any backend. Twenty-two tools, one canvas,
+One interface swap connects it to any backend. Thirty-five tools, one canvas,
 two kinds of hands. This is what the agent-native web looks like when humans
 stay in charge."
 
@@ -132,17 +132,21 @@ stay in charge."
 
 Option A — ChatGPT in-app browser (recommended, zero setup):
 1. Open the ChatGPT desktop app, open the built-in browser, and go to: <LIVE_URL>
-2. The WebMCP pill in the top bar turns green: "WebMCP · 19 tools".
+2. The WebMCP pill in the top bar turns green: "WebMCP · 32 tools".
 3. Click "Load demo dashboard" (or upload any CSV — data stays in your browser).
 4. Ask the agent, e.g.:
    - "Look at my dashboard and tell me what stands out."
    - "Add a KPI for average revenue per customer."
    - "Find the churn spike and explain what caused it. Add a drill-down chart."
-5. Co-work: drag/resize a tile, recolor a chart (select it — 3 extra tools appear),
+5. Co-work: drag/resize a tile, recolor a chart (select it — 3 extra tools appear, 32 → 35),
    then brush a date range on the MRR chart and ask "why did this happen?"
    The agent reads your brush selection via get_user_focus.
 6. Try to make it misbehave: ask it to DROP a table (read-only guard refuses),
    or to overwrite a title you just edited (conflict rule makes it ask you first).
+6b. v2 BI depth: click a donut slice or bar — every tile cross-filters (the agent
+   reads it via get_user_focus). Try ⌘K for the command palette, 'Growth drivers'
+   page tab for combo/scatter/heatmap + a calculated-field KPI, F for presentation
+   mode, and the share/export buttons.
 7. Every agent edit glows violet with an "AI" chip; the activity feed (bell icon)
    shows who did what, with one-click undo.
 

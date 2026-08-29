@@ -30,6 +30,16 @@ live document* the human is looking at:
 
 ![Agent-built drill-down with attribution chips and annotation](docs/media/kri-glow.png)
 
+### v2: a real BI workbench
+
+![Growth drivers page — combo, donut, scatter with trendline, heatmap, calculated-field KPI](docs/media/kri-growth-drivers.png)
+- **12 chart types** — line, bar, area, pie/donut, scatter, combo (dual axis), horizontal bar, stacked-100%, funnel, heatmap, radar — plus trendlines, reference lines and conditional-formatting rules
+- **Cross-filtering** — click any bar/slice/point/cell and every tile filters; the agent sees it via `get_user_focus`
+- **Calculated fields & SQL views** — define `arpu` once, use it everywhere; views appear as datasets
+- **Pages, dashboards, templates** — multi-page docs, a local dashboard manager, 3 starter templates
+- **⌘K command palette**, presentation mode, PNG/CSV export, share-URLs, autosave persistence
+- **35 WebMCP tools** (32 static + 3 selection-scoped) — every one of these features is agent-operable
+
 ## 60-second quickstart
 
 1. Open the live demo: **<https://theemperor66.github.io/kontier-ri/>**
@@ -109,7 +119,7 @@ In practice that call lives behind our `useWebMCPTool` React hook
 (`packages/studio/src/webmcp/useWebMCPTool.ts`): tools mount with components,
 re-validate input with the same zod schema that produced the JSON Schema, and
 unregister via `AbortController` — which is how the three selection-scoped
-tools appear only while a tile is selected (19 → 22 tools live).
+tools appear only while a tile is selected (32 → 35 tools live).
 
 ## Privacy
 
