@@ -72,7 +72,7 @@ export function ActivityFeed({
                   className={cn(
                     "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full",
                     entry.by === "agent"
-                      ? "bg-violet-500/15 text-violet-500 dark:text-violet-300"
+                      ? "bg-agent/15 text-agent"
                       : "bg-secondary text-secondary-foreground",
                   )}
                 >

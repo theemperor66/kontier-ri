@@ -25,11 +25,11 @@ export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
   return (
     <div className="flex min-h-[70dvh] items-center justify-center px-4">
       <div className="w-full max-w-xl text-center">
-        <div className="mx-auto mb-6 flex size-14 items-center justify-center rounded-2xl border border-violet-500/30 bg-violet-500/10">
-          <Robot weight="duotone" className="size-7 text-violet-500 dark:text-violet-300" />
+        <div className="mx-auto mb-6 flex size-14 items-center justify-center rounded-2xl border border-agent/30 bg-agent/10">
+          <Robot weight="duotone" className="size-7 text-agent" />
         </div>
         <h1 className="text-balance text-2xl font-semibold tracking-tight">
-          Build dashboards <span className="text-violet-500 dark:text-violet-300">with</span> your AI agent
+          Build dashboards <span className="text-agent">with</span> your AI agent
         </h1>
         <p className="mx-auto mt-3 max-w-md text-pretty text-sm leading-relaxed text-muted-foreground">
           This page registers WebMCP tools for AI agents. Open it in the{" "}
@@ -93,7 +93,7 @@ export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
               <button
                 key={prompt}
                 type="button"
-                className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-foreground"
+                className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-agent/40 hover:bg-agent/10 hover:text-foreground"
                 onClick={() => {
                   void navigator.clipboard
                     .writeText(prompt)

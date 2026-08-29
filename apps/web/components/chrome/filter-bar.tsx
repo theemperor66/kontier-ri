@@ -72,17 +72,17 @@ export function FilterBar() {
         </span>
       ) : null}
       {brushed ? (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 py-1 pl-2.5 pr-1 text-xs text-violet-600 dark:text-violet-300">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-agent/30 bg-agent/10 py-1 pl-2.5 pr-1 text-xs text-agent">
           <Scan className="size-3" />
           <span className="font-medium">
             Brushed {brushed.from} → {brushed.to}
           </span>
-          <span className="hidden text-violet-500/70 sm:inline dark:text-violet-300/60">
+          <span className="hidden text-agent/70 sm:inline">
             · ask your agent “why?”
           </span>
           <button
             aria-label="Clear brushed range"
-            className="flex size-4 cursor-pointer items-center justify-center rounded-full hover:bg-violet-500/20"
+            className="flex size-4 cursor-pointer items-center justify-center rounded-full hover:bg-agent/20"
             onClick={() => setBrushedRange(null)}
           >
             <X className="size-2.5" />

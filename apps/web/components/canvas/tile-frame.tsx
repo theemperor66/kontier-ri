@@ -127,7 +127,7 @@ export const TileFrame = memo(function TileFrame({
           {tile.title}
         </span>
         {pulsing ? (
-          <span className="chip-fading ml-1 inline-flex items-center gap-0.5 rounded-full border border-violet-500/30 bg-violet-500/15 px-1.5 py-px text-[10px] font-semibold text-violet-500 dark:text-violet-300">
+          <span className="chip-fading ml-1 inline-flex items-center gap-0.5 rounded-full border border-agent/30 bg-agent/15 px-1.5 py-px text-[10px] font-semibold text-agent">
             <Sparkle weight="fill" className="size-2.5" />
             AI
           </span>
