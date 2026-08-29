@@ -1,0 +1,54 @@
+"use client";
+
+import { useMemo } from "react";
+import type { DataSource } from "@kontier-ri/datasource";
+import { useWebMCPTool } from "./useWebMCPTool";
+import { buildStaticTools, type StudioStoreApi, type ToolDefinition } from "./tools";
+
+/** One hook call per tool; keyed mount keeps the rules of hooks happy. */
+export function RegisteredTool({
+  def,
+  onError,
+}: {
+  def: ToolDefinition;
+  onError?: (toolName: string, err: unknown) => void;
+}) {
+  useWebMCPTool({
+    name: def.name,
+    description: def.description,
+    inputSchema: def.inputSchema,
+    execute: def.execute,
+    ...(def.annotations ? { annotations: def.annotations } : {}),
+    ...(onError ? { onError: (err: unknown) => onError(def.name, err) } : {}),
+  });
+  return null;
+}
+
+export interface WebMCPToolsProps {
+  dataSource: DataSource;
+  /** Override the dashboard store (tests); defaults to useDashboardStore. */
+  store?: StudioStoreApi;
+  onError?: (toolName: string, err: unknown) => void;
+}
+
+/**
+ * Mounts all 19 static WebMCP tools (docs/TOOLS.md). Render once from the
+ * top-level page (ChatGPT constraint: register only from the top frame).
+ */
+export function WebMCPTools({ dataSource, store, onError }: WebMCPToolsProps) {
+  const defs = useMemo(
+    () => buildStaticTools({ dataSource, ...(store ? { store } : {}) }),
+    [dataSource, store],
+  );
+  return (
+    <>
+      {defs.map((def) => (
+        <RegisteredTool
+          key={def.name}
+          def={def}
+          {...(onError ? { onError } : {})}
+        />
+      ))}
+    </>
+  );
+}
