@@ -88,6 +88,29 @@ kontier-ri/
 - **Self-hosted engine.** duckdb-wasm bundles are copied into `public/duckdb/`
   at build time and served same-origin (CDN only as fallback).
 
+## How the WebMCP integration works
+
+Every tool is registered from the page via the standard WebMCP entry point:
+
+```ts
+document.modelContext.registerTool(
+  {
+    name: "add_tile",
+    description: "Add a KPI, chart, table or markdown tile to the dashboard",
+    inputSchema: z.toJSONSchema(addTileInput), // zod v4 — one schema for validation + protocol
+    annotations: { readOnlyHint: false },
+    execute: async (input, options) => addTileFromAgent(input, options?.signal),
+  },
+  { signal: controller.signal }, // AbortController -> unregister on React unmount
+);
+```
+
+In practice that call lives behind our `useWebMCPTool` React hook
+(`packages/studio/src/webmcp/useWebMCPTool.ts`): tools mount with components,
+re-validate input with the same zod schema that produced the JSON Schema, and
+unregister via `AbortController` — which is how the three selection-scoped
+tools appear only while a tile is selected (19 → 22 tools live).
+
 ## Privacy
 
 All SQL executes in a DuckDB-WASM instance inside your tab. Uploaded files are
