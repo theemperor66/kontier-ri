@@ -85,3 +85,45 @@ guard. Monorepo: `packages/datasource` (DataSource interface + DuckDB-WASM),
 GitHub Pages: https://theemperor66.github.io/kontier-ri/ — deployed on every
 push to main via .github/workflows/deploy.yml (static export, basePath
 /kontier-ri). Root-path deploys (Vercel) need no env changes.
+
+## Voice-over script (verbatim, ~2:45 at normal pace)
+
+**[0:00 — empty canvas, WebMCP pill green]**
+"BI tools bury you in menus. AI chatbots hand you static charts you can't touch.
+Kontier RI is what happens when you stop choosing: an open-source analytics
+studio where you and your AI agent work on the same canvas, at the same time.
+It's built on WebMCP — this page registers twenty-two structured tools that any
+browser agent can call. And the data? It loads into DuckDB inside your browser.
+Raw rows never leave the page."
+
+**[0:30 — ChatGPT browser, type: "Profile my data and build a revenue dashboard"]**
+"I'm in ChatGPT's browser. I just ask. The agent profiles the schema, writes
+SQL, and drafts the dashboard — watch the tiles land: every agent edit glows,
+and carries an AI badge. MRR, subscriptions, payment success, plan mix. Real
+queries, running locally."
+
+**[1:00 — human drags a tile, recolors a chart]**
+"But I'm not a spectator. I drag, I resize, I restyle — and here's the rule
+that makes co-working actually work: the agent may not overwrite anything I
+just touched. If it tries, it gets a conflict and has to ask me."
+
+**[1:20 — brush the March dip on the MRR chart, type "why did this happen?"]**
+"Now the good part. I brush this dip with my mouse — and just ask why.
+The agent reads my selection through a tool called get_user_focus,
+investigates with SQL, and answers on the canvas: a drill-down chart and an
+annotation. The churn spike came from the Growth plan's price increase.
+My gesture became its context. That's the whole idea."
+
+**[1:55 — select a tile: tool count 19→22; activity feed; Cmd+Z]**
+"Under the hood it goes deeper. Select a tile — three extra tools mount, scoped
+to my selection, and unmount when I click away. Every change, human or agent,
+lands in one activity feed, attributed, and undoable with one click. Ask it to
+drop a table? The read-only guard refuses. Feed it a malformed tile spec?
+Strict schemas bounce it with a helpful error."
+
+**[2:25 — repo, README, AGPL badge, DataSource seam diagram]**
+"Kontier RI is AGPL open source, built on the exact stack of our billing
+product, Kontier — because this is the future analytics engine of a real SaaS.
+One interface swap connects it to any backend. Twenty-two tools, one canvas,
+two kinds of hands. This is what the agent-native web looks like when humans
+stay in charge."
