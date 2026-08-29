@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { assertSelectOnly, ReadOnlySQLError } from "@kontier-ri/datasource";
 import type {
   ActionConflict,
   ActionMeta,
@@ -7,19 +8,26 @@ import type {
   AddTileInput,
   Annotation,
   BrushedRange,
+  CalculatedField,
+  CrossFilter,
   DashboardDoc,
+  DashboardDocInput,
   DashboardStore,
   DateRange,
   GlobalFilter,
   HistoryEntry,
   HumanEdit,
+  Page,
   ThemeSettings,
   Tile,
+  TileFilter,
   TileLayout,
   TilePatch,
   TileType,
+  ViewDef,
 } from "./types";
 import { GRID_COLUMNS } from "./types";
+import { migrateDoc, withActivePageMirror } from "./migrate";
 
 /** Conflict window: agent may not silently overwrite newer human edits. */
 export const HUMAN_EDIT_WINDOW_MS = 10 * 60_000;
@@ -28,6 +36,8 @@ export const MAX_ACTIVITY = 100;
 export const MAX_HISTORY = 100;
 /** Pseudo tileId for dashboard-scoped human edits (title/theme/filters). */
 export const DASHBOARD_SCOPE = "__dashboard__";
+/** Views created through the doc registry are namespaced with this prefix. */
+export const VIEW_PREFIX = "view_";
 
 export const DEFAULT_TILE_SIZE: Record<TileType, { w: number; h: number }> = {
   kpi: { w: 3, h: 2 },
@@ -43,12 +53,12 @@ export function genId(prefix: string): string {
 }
 
 export function createInitialDoc(): DashboardDoc {
-  return {
+  return migrateDoc({
     title: "Untitled dashboard",
     theme: { mode: "dark" },
     filters: { filters: [], dateRange: null },
     tiles: [],
-  };
+  });
 }
 
 export function pruneHumanEdits(edits: HumanEdit[], now: number): HumanEdit[] {
@@ -75,6 +85,42 @@ export function autoLayout(
   return { x: 0, y: maxY, w, h: size.h };
 }
 
+const IDENT_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+/** Normalize a view name into the `view_` namespace (validates identifier). */
+export function normalizeViewName(name: string): string {
+  const withPrefix = name.startsWith(VIEW_PREFIX) ? name : `${VIEW_PREFIX}${name}`;
+  if (!IDENT_RE.test(withPrefix)) {
+    throw new Error(
+      `Invalid view name ${JSON.stringify(name)}: use letters, digits and underscores.`,
+    );
+  }
+  return withPrefix;
+}
+
+const AGGREGATE_FN_RE =
+  /\b(sum|avg|min|max|count|median|mode|stddev|stddev_pop|stddev_samp|var_pop|var_samp|variance|quantile|quantile_cont|quantile_disc|approx_count_distinct|approx_quantile|string_agg|list|histogram|first|last|arg_min|arg_max|corr|covar_pop|covar_samp|bool_and|bool_or|bit_and|bit_or|product|entropy|kurtosis|skewness)\s*\(/i;
+
+/** Auto-detect whether an expression is aggregate-level or row-level. */
+export function detectCalculatedFieldKind(
+  expression: string,
+): CalculatedField["kind"] {
+  return AGGREGATE_FN_RE.test(expression) ? "aggregate" : "row";
+}
+
+const FORBIDDEN_IN_EXPR_RE =
+  /\b(insert|update|delete|drop|create|alter|attach|detach|copy|export|import|install|load|pragma|call|vacuum|checkpoint|begin|commit|rollback|grant|revoke|truncate|merge)\b/i;
+
+/** Reject statements / side effects inside a calculated-field expression. */
+export function validateExpression(expression: string): string | null {
+  const trimmed = expression.trim();
+  if (trimmed.length === 0) return "Expression must not be empty.";
+  if (trimmed.includes(";")) return "Expression must not contain ';'.";
+  const m = FORBIDDEN_IN_EXPR_RE.exec(trimmed);
+  if (m) return `Forbidden keyword in expression: ${m[1]!.toUpperCase()}`;
+  return null;
+}
+
 function conflictHint(properties: string[]): string {
   return (
     `The user edited ${properties.join(", ")} less than 10 minutes ago. ` +
@@ -85,6 +131,8 @@ function conflictHint(properties: string[]): string {
 type CommitOptions = {
   /** Tile the command touched (agent glow + result payload). */
   tileId?: string;
+  /** Page the command touched (result payload). */
+  pageId?: string;
   /** Properties to record as recent human edits (human origin only). */
   humanProps?: { tileId: string; property: string }[];
 };
@@ -93,9 +141,10 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
   /** Shared command path: snapshot -> mutate -> attribute -> log. */
   function commit(
     meta: ActionMeta,
-    nextDoc: DashboardDoc,
+    nextDocRaw: DashboardDoc,
     options: CommitOptions = {},
   ): ActionResult {
+    const nextDoc = withActivePageMirror(nextDocRaw);
     const now = Date.now();
     const id = genId("cmd");
     set((s) => {
@@ -140,10 +189,14 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
         ...selectionCleanup(s, nextDoc),
       };
     });
-    return options.tileId ? { ok: true, tileId: options.tileId } : { ok: true };
+    return {
+      ok: true,
+      ...(options.tileId ? { tileId: options.tileId } : {}),
+      ...(options.pageId ? { pageId: options.pageId } : {}),
+    };
   }
 
-  /** Clear selection/hover/brush that points at tiles no longer in the doc. */
+  /** Clear selection/hover/brush that points at tiles not on the active page. */
   function selectionCleanup(
     s: Pick<DashboardStore, "selectedTileId" | "hoveredTileId" | "brushedRange">,
     doc: DashboardDoc,
@@ -188,13 +241,41 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
     };
   }
 
+  /** Find a tile on ANY page (commands work across pages). */
   function getTile(tileId: string): Tile | undefined {
-    return get().doc.tiles.find((t) => t.id === tileId);
+    for (const page of get().doc.pages) {
+      const tile = page.tiles.find((t) => t.id === tileId);
+      if (tile) return tile;
+    }
+    return undefined;
+  }
+
+  /** New doc with `fn` applied to the page tiles list containing tileId. */
+  function mapTilePage(
+    doc: DashboardDoc,
+    tileId: string,
+    fn: (tiles: Tile[]) => Tile[],
+  ): DashboardDoc {
+    return {
+      ...doc,
+      pages: doc.pages.map((p) =>
+        p.tiles.some((t) => t.id === tileId) ? { ...p, tiles: fn(p.tiles) } : p,
+      ),
+    };
+  }
+
+  function getPage(pageId: string): Page | undefined {
+    return get().doc.pages.find((p) => p.id === pageId);
   }
 
   const notFound = (tileId: string): ActionResult => ({
     ok: false,
     error: `No tile with id "${tileId}". Use get_dashboard_state to list tiles.`,
+  });
+
+  const pageNotFound = (pageId: string): ActionResult => ({
+    ok: false,
+    error: `No page with id "${pageId}". Use get_dashboard_state to list pages.`,
   });
 
   return {
@@ -220,11 +301,14 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
         spec: { ...input.spec },
         annotations: [],
       };
-      return commit(
-        meta,
-        { ...s.doc, tiles: [...s.doc.tiles, tile] },
-        { tileId: tile.id },
-      );
+      // Add to the ACTIVE page.
+      const doc = {
+        ...s.doc,
+        pages: s.doc.pages.map((p) =>
+          p.id === s.doc.activePageId ? { ...p, tiles: [...p.tiles, tile] } : p,
+        ),
+      };
+      return commit(meta, doc, { tileId: tile.id });
     },
 
     updateTile(tileId: string, patch: TilePatch, meta: ActionMeta): ActionResult {
@@ -245,15 +329,13 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
         ...(patch.title !== undefined ? { title: patch.title } : {}),
         spec: { ...tile.spec, ...(patch.spec ?? {}) } as Tile["spec"],
       };
-      const doc = get().doc;
-      return commit(
-        meta,
-        { ...doc, tiles: doc.tiles.map((t) => (t.id === tileId ? next : t)) },
-        {
-          tileId,
-          humanProps: properties.map((property) => ({ tileId, property })),
-        },
+      const doc = mapTilePage(get().doc, tileId, (tiles) =>
+        tiles.map((t) => (t.id === tileId ? next : t)),
       );
+      return commit(meta, doc, {
+        tileId,
+        humanProps: properties.map((property) => ({ tileId, property })),
+      });
     },
 
     moveTile(tileId: string, layout: TileLayout, meta: ActionMeta): ActionResult {
@@ -267,28 +349,24 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
       }
       const conflict = findConflict(meta, tileId, ["layout"]);
       if (conflict) return conflict;
-      const doc = get().doc;
-      return commit(
-        meta,
-        {
-          ...doc,
-          tiles: doc.tiles.map((t) =>
-            t.id === tileId ? { ...t, layout: { ...layout } } : t,
-          ),
-        },
-        { tileId, humanProps: [{ tileId, property: "layout" }] },
+      const doc = mapTilePage(get().doc, tileId, (tiles) =>
+        tiles.map((t) =>
+          t.id === tileId ? { ...t, layout: { ...layout } } : t,
+        ),
       );
+      return commit(meta, doc, {
+        tileId,
+        humanProps: [{ tileId, property: "layout" }],
+      });
     },
 
     removeTile(tileId: string, meta: ActionMeta): ActionResult {
       const tile = getTile(tileId);
       if (!tile) return notFound(tileId);
-      const doc = get().doc;
-      return commit(
-        meta,
-        { ...doc, tiles: doc.tiles.filter((t) => t.id !== tileId) },
-        { tileId },
+      const doc = mapTilePage(get().doc, tileId, (tiles) =>
+        tiles.filter((t) => t.id !== tileId),
       );
+      return commit(meta, doc, { tileId });
     },
 
     setFilter(filter: GlobalFilter, meta: ActionMeta): ActionResult {
@@ -366,19 +444,225 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
         by: meta.origin,
         at: Date.now(),
       };
+      const doc = mapTilePage(get().doc, tileId, (tiles) =>
+        tiles.map((t) =>
+          t.id === tileId
+            ? { ...t, annotations: [...t.annotations, annotation] }
+            : t,
+        ),
+      );
+      return commit(meta, doc, { tileId });
+    },
+
+    // -- pages ---------------------------------------------------------------
+
+    addPage(name: string, meta: ActionMeta): ActionResult {
+      const trimmed = name.trim();
+      if (trimmed.length === 0) {
+        return { ok: false, error: "Page name must not be empty." };
+      }
+      const doc = get().doc;
+      const page: Page = { id: genId("page"), name: trimmed, tiles: [] };
+      // New page becomes active.
+      return commit(
+        meta,
+        { ...doc, pages: [...doc.pages, page], activePageId: page.id },
+        { pageId: page.id },
+      );
+    },
+
+    renamePage(pageId: string, name: string, meta: ActionMeta): ActionResult {
+      const page = getPage(pageId);
+      if (!page) return pageNotFound(pageId);
+      const trimmed = name.trim();
+      if (trimmed.length === 0) {
+        return { ok: false, error: "Page name must not be empty." };
+      }
+      const conflict = findConflict(meta, DASHBOARD_SCOPE, [`page:${pageId}`]);
+      if (conflict) return conflict;
       const doc = get().doc;
       return commit(
         meta,
         {
           ...doc,
-          tiles: doc.tiles.map((t) =>
-            t.id === tileId
-              ? { ...t, annotations: [...t.annotations, annotation] }
-              : t,
+          pages: doc.pages.map((p) =>
+            p.id === pageId ? { ...p, name: trimmed } : p,
           ),
         },
-        { tileId },
+        {
+          pageId,
+          humanProps: [{ tileId: DASHBOARD_SCOPE, property: `page:${pageId}` }],
+        },
       );
+    },
+
+    removePage(pageId: string, meta: ActionMeta): ActionResult {
+      const page = getPage(pageId);
+      if (!page) return pageNotFound(pageId);
+      const doc = get().doc;
+      if (doc.pages.length <= 1) {
+        return { ok: false, error: "Cannot remove the last page." };
+      }
+      const pages = doc.pages.filter((p) => p.id !== pageId);
+      const activePageId =
+        doc.activePageId === pageId ? pages[0]!.id : doc.activePageId;
+      return commit(meta, { ...doc, pages, activePageId }, { pageId });
+    },
+
+    switchPage(pageId: string, meta: ActionMeta): ActionResult {
+      const page = getPage(pageId);
+      if (!page) return pageNotFound(pageId);
+      const doc = get().doc;
+      if (doc.activePageId === pageId) {
+        return { ok: false, error: `Page "${page.name}" is already active.` };
+      }
+      return commit(meta, { ...doc, activePageId: pageId }, { pageId });
+    },
+
+    // -- cross-filter --------------------------------------------------------
+
+    setCrossFilter(filter: CrossFilter, meta: ActionMeta): ActionResult {
+      const doc = get().doc;
+      return commit(meta, { ...doc, crossFilter: { ...filter } });
+    },
+
+    clearCrossFilter(meta: ActionMeta): ActionResult {
+      const doc = get().doc;
+      if (!doc.crossFilter) {
+        return { ok: false, error: "No cross-filter is active." };
+      }
+      return commit(meta, { ...doc, crossFilter: null });
+    },
+
+    setTileIgnoreCrossFilter(
+      tileId: string,
+      ignore: boolean,
+      meta: ActionMeta,
+    ): ActionResult {
+      const tile = getTile(tileId);
+      if (!tile) return notFound(tileId);
+      const doc = mapTilePage(get().doc, tileId, (tiles) =>
+        tiles.map((t) =>
+          t.id === tileId ? { ...t, ignoreCrossFilter: ignore } : t,
+        ),
+      );
+      return commit(meta, doc, { tileId });
+    },
+
+    setTileFilters(
+      tileId: string,
+      filters: TileFilter[],
+      meta: ActionMeta,
+    ): ActionResult {
+      const tile = getTile(tileId);
+      if (!tile) return notFound(tileId);
+      if (tile.type === "markdown") {
+        return { ok: false, error: "Markdown tiles cannot have filters." };
+      }
+      const conflict = findConflict(meta, tileId, ["spec.filters"]);
+      if (conflict) return conflict;
+      const doc = mapTilePage(get().doc, tileId, (tiles) =>
+        tiles.map((t) =>
+          t.id === tileId
+            ? {
+                ...t,
+                spec: {
+                  ...t.spec,
+                  filters: filters.map((f) => ({ ...f })),
+                } as Tile["spec"],
+              }
+            : t,
+        ),
+      );
+      return commit(meta, doc, {
+        tileId,
+        humanProps: [{ tileId, property: "spec.filters" }],
+      });
+    },
+
+    // -- calculated fields / views -------------------------------------------
+
+    addCalculatedField(
+      field: Omit<CalculatedField, "kind"> & { kind?: CalculatedField["kind"] },
+      meta: ActionMeta,
+    ): ActionResult {
+      if (!IDENT_RE.test(field.name)) {
+        return {
+          ok: false,
+          error: `Invalid field name ${JSON.stringify(field.name)}: use letters, digits and underscores (no leading digit).`,
+        };
+      }
+      const doc = get().doc;
+      if (doc.calculatedFields.some((f) => f.name === field.name)) {
+        return {
+          ok: false,
+          error: `A calculated field named "${field.name}" already exists. Remove it first or pick another name.`,
+        };
+      }
+      const invalid = validateExpression(field.expression);
+      if (invalid) return { ok: false, error: invalid };
+      const entry: CalculatedField = {
+        name: field.name,
+        dataset: field.dataset,
+        expression: field.expression.trim(),
+        kind: field.kind ?? detectCalculatedFieldKind(field.expression),
+        ...(field.description ? { description: field.description } : {}),
+      };
+      return commit(meta, {
+        ...doc,
+        calculatedFields: [...doc.calculatedFields, entry],
+      });
+    },
+
+    removeCalculatedField(name: string, meta: ActionMeta): ActionResult {
+      const doc = get().doc;
+      if (!doc.calculatedFields.some((f) => f.name === name)) {
+        return { ok: false, error: `No calculated field named "${name}".` };
+      }
+      return commit(meta, {
+        ...doc,
+        calculatedFields: doc.calculatedFields.filter((f) => f.name !== name),
+      });
+    },
+
+    addView(view: ViewDef, meta: ActionMeta): ActionResult {
+      let name: string;
+      try {
+        name = normalizeViewName(view.name);
+        assertSelectOnly(view.sql);
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+      const doc = get().doc;
+      if (doc.views.some((v) => v.name === name)) {
+        return {
+          ok: false,
+          error: `A view named "${name}" already exists. Remove it first.`,
+        };
+      }
+      const entry: ViewDef = {
+        name,
+        sql: view.sql.trim().replace(/;+\s*$/, ""),
+        ...(view.description ? { description: view.description } : {}),
+      };
+      return commit(meta, { ...doc, views: [...doc.views, entry] });
+    },
+
+    removeView(name: string, meta: ActionMeta): ActionResult {
+      const doc = get().doc;
+      const normalized = name.startsWith(VIEW_PREFIX)
+        ? name
+        : `${VIEW_PREFIX}${name}`;
+      if (!doc.views.some((v) => v.name === normalized)) {
+        return { ok: false, error: `No view named "${normalized}".` };
+      }
+      return commit(meta, {
+        ...doc,
+        views: doc.views.filter((v) => v.name !== normalized),
+      });
     },
 
     undo(): ActionResult {
@@ -434,9 +718,9 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
       });
     },
 
-    resetDashboard(doc?: DashboardDoc): void {
+    resetDashboard(doc?: DashboardDocInput): void {
       set({
-        doc: doc ?? createInitialDoc(),
+        doc: doc ? migrateDoc(doc) : createInitialDoc(),
         undoStack: [],
         redoStack: [],
         activityLog: [],

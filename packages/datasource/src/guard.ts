@@ -135,6 +135,25 @@ export function assertReadOnly(sql: string): string {
   return sql.trim().replace(/;+\s*$/, "");
 }
 
+const VIEW_BODY_LEADING = new Set(["select", "with", "from"]);
+
+/**
+ * Like assertReadOnly, but stricter: the statement must BE a query
+ * (SELECT / WITH / FROM). Used for CREATE VIEW bodies, where DESCRIBE /
+ * SUMMARIZE / SHOW make no sense. Returns the trimmed statement.
+ */
+export function assertSelectOnly(sql: string): string {
+  const validated = assertReadOnly(sql);
+  const stripped = stripLiteralsAndComments(validated).trim();
+  const firstWord = /[a-zA-Z_]+/.exec(stripped)?.[0]?.toLowerCase();
+  if (!firstWord || !VIEW_BODY_LEADING.has(firstWord)) {
+    throw new ReadOnlySQLError(
+      `A view body must be a SELECT query (got ${JSON.stringify(firstWord ?? "")}).`,
+    );
+  }
+  return validated;
+}
+
 /** Wrap a (validated) query so the engine enforces the row cap. */
 export function applyRowCap(validatedSql: string, maxRows: number): string {
   // +1 row so we can detect truncation.

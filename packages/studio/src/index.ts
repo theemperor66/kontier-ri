@@ -6,12 +6,20 @@ export {
   autoLayout,
   genId,
   pruneHumanEdits,
+  detectCalculatedFieldKind,
+  normalizeViewName,
+  validateExpression,
   HUMAN_EDIT_WINDOW_MS,
   MAX_ACTIVITY,
   MAX_HISTORY,
   DASHBOARD_SCOPE,
   DEFAULT_TILE_SIZE,
+  VIEW_PREFIX,
 } from "./store";
+
+// Doc migration (v1 flat-tiles docs -> v2 pages docs). resetDashboard runs
+// this automatically; exported for import/share-URL code paths.
+export { migrateDoc, withActivePageMirror, V1_PAGE_ID } from "./migrate";
 
 // Zod schemas (tool inputs + tile specs; all .strict()).
 export * as schemas from "./schemas";

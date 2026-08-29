@@ -1,12 +1,27 @@
 /**
  * Dashboard document model + store contract types for Kontier RI studio.
  * Single source of truth for the tile/document shapes in docs/TOOLS.md.
+ *
+ * v2 doc shape (PLAN-V2 section A): pages[], crossFilter, calculatedFields,
+ * views. v1 docs (flat tiles[]) are migrated on load — see migrate.ts.
  */
 
 export type Origin = "human" | "agent";
 
 export type TileType = "kpi" | "chart" | "table" | "markdown";
-export type ChartType = "line" | "bar" | "area" | "pie";
+export type ChartType =
+  | "line"
+  | "bar"
+  | "area"
+  | "pie"
+  | "scatter"
+  | "combo"
+  | "donut"
+  | "hbar"
+  | "stacked100"
+  | "funnel"
+  | "heatmap"
+  | "radar";
 export type Agg =
   | "sum"
   | "avg"
@@ -18,8 +33,14 @@ export type Agg =
 export type KpiFormat = "currency" | "number" | "percent";
 export type FilterOp = "eq" | "in" | "between" | "contains";
 
+/** Number/axis formatting for chart axes, table cells and KPI values. */
+export type ValueFormat = "currency" | "number" | "percent" | "compact";
+
 /** 12-column grid (docs/TOOLS.md move_tile). */
 export const GRID_COLUMNS = 12;
+
+/** Current document version (see migrateDoc). v1 docs have no version. */
+export const DOC_VERSION = 2;
 
 export interface TileLayout {
   x: number;
@@ -28,14 +49,70 @@ export interface TileLayout {
   h: number;
 }
 
+// ---------------------------------------------------------------------------
+// Tile-level filters / analytics / formatting (PLAN-V2)
+// ---------------------------------------------------------------------------
+
+/** Tile-scoped filter — same op grammar as GlobalFilter. */
+export interface TileFilter {
+  column: string;
+  op: FilterOp;
+  value: unknown;
+}
+
+/** Reference line at value (y for vertical charts, x for hbar). */
+export interface ReferenceLine {
+  value: number;
+  label?: string;
+  color?: string;
+}
+
+export interface TileAnalytics {
+  /** Linear-regression trendline over the first series (dashed). */
+  trendline?: boolean;
+  referenceLine?: ReferenceLine;
+}
+
+/** Conditional formatting rule: when `<cell> <op> value`, apply color. */
+export interface FormatRule {
+  op: "lt" | "lte" | "gt" | "gte" | "eq";
+  value: number;
+  color: string;
+}
+
+/** Object form of a value format (currency override etc.). */
+export interface ValueFormatOptions {
+  style: ValueFormat;
+  /** ISO 4217, default "EUR". */
+  currency?: string;
+}
+
+export interface TileFormat {
+  /** Number format for the primary value axis / numeric cells. */
+  value?: ValueFormat | ValueFormatOptions;
+  /** Number format for the secondary (right) axis of combo charts. */
+  y2?: ValueFormat | ValueFormatOptions;
+  /** Conditional formatting rules (first matching rule wins). */
+  rules?: FormatRule[];
+}
+
+// ---------------------------------------------------------------------------
+// Tile specs
+// ---------------------------------------------------------------------------
+
 /** kpi: `{dataset, sql | {measure, agg}, format, compare?}` */
 export interface KpiSpec {
   dataset: string;
   sql?: string;
   measure?: string;
   agg?: Agg;
-  format: KpiFormat;
+  /** Legacy string format still accepted; object form adds currency. */
+  format: KpiFormat | ValueFormatOptions;
   compare?: "prev_period";
+  /** Tile-scoped filters (ANDed with global filters). */
+  filters?: TileFilter[];
+  /** Conditional formatting for the KPI value. */
+  rules?: FormatRule[];
 }
 
 export interface ChartMeasure {
@@ -47,11 +124,23 @@ export interface ChartQuerySQL {
   sql: string;
 }
 
+/** Combo chart per-series rendering config. */
+export interface SeriesConfig {
+  key: string;
+  type?: "bar" | "line";
+  axis?: "left" | "right";
+}
+
 export interface ChartQueryDims {
   dims: string[];
   measures: ChartMeasure[];
   orderBy?: string;
   limit?: number;
+  /**
+   * With `limit`: keep the top-`limit` groups (by the first measure, desc)
+   * and collapse the remaining groups into an "Other" row. Single-dim only.
+   */
+  othersBucket?: boolean;
 }
 
 export type ChartQuery = ChartQuerySQL | ChartQueryDims;
@@ -65,7 +154,23 @@ export interface ChartSpec {
   xKey: string;
   /** Measure aliases / columns plotted as series. */
   seriesKeys?: string[];
+  /**
+   * Heatmap second dim (row axis); scatter y column when query is raw SQL.
+   * Heatmap structured queries use dims: [xKey, yKey] + 1 measure.
+   */
+  yKey?: string;
+  /**
+   * Per-series config for combo charts. Default when omitted:
+   * first series bar-left, remaining series line-left.
+   */
+  series?: SeriesConfig[];
+  /** Show the legend (default false). */
+  legend?: boolean;
   color?: string;
+  /** Tile-scoped filters (ANDed with global filters). */
+  filters?: TileFilter[];
+  analytics?: TileAnalytics;
+  format?: TileFormat;
 }
 
 export interface TableSpec {
@@ -73,6 +178,9 @@ export interface TableSpec {
   sql: string;
   /** <= 25 */
   pageSize?: number;
+  /** Tile-scoped filters (ANDed with global filters). */
+  filters?: TileFilter[];
+  format?: TileFormat;
 }
 
 export interface MarkdownSpec {
@@ -105,6 +213,54 @@ export interface Tile {
   layout: TileLayout;
   spec: TileSpec;
   annotations: Annotation[];
+  /** Per-tile cross-filter opt-out (tile menu toggle). */
+  ignoreCrossFilter?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Pages / cross-filter / calculated fields / views (v2)
+// ---------------------------------------------------------------------------
+
+export interface Page {
+  id: string;
+  name: string;
+  tiles: Tile[];
+}
+
+/**
+ * Click-to-filter state: clicking a bar/slice/point/cell emits
+ * {column, value}; every other tile applies it (unless opted out).
+ */
+export interface CrossFilter {
+  column: string;
+  value: string | number | boolean;
+  /** Tile the click originated from (exempt from the filter). */
+  sourceTileId?: string;
+}
+
+/**
+ * Named SQL expression scoped to one dataset, usable in structured tile
+ * queries (dims / measure cols / kpi measure). `kind` is auto-detected at
+ * creation: "aggregate" expressions (contain sum/avg/count/...) are used
+ * verbatim as measures; "row" expressions are wrapped by the measure agg.
+ */
+export interface CalculatedField {
+  /** Identifier ([a-zA-Z_][a-zA-Z0-9_]*), unique across the doc. */
+  name: string;
+  dataset: string;
+  /** SQL expression fragment, e.g. `sum(amount)/count(DISTINCT customer_id)`. */
+  expression: string;
+  kind: "row" | "aggregate";
+  description?: string;
+}
+
+/** SQL view persisted in the doc and mirrored into DuckDB as `view_*`. */
+export interface ViewDef {
+  /** Always namespaced: starts with `view_`. */
+  name: string;
+  /** SELECT-only body (read-only guard applies). */
+  sql: string;
+  description?: string;
 }
 
 export interface GlobalFilter {
@@ -130,12 +286,42 @@ export interface ThemeSettings {
   mode: "dark" | "light";
 }
 
-/** The whole dashboard document — one JSON-serializable object. */
+/**
+ * The whole dashboard document — one JSON-serializable object.
+ *
+ * Invariant (maintained by the store): `tiles` mirrors the ACTIVE page's
+ * tiles (same array reference). Legacy consumers keep reading `doc.tiles`;
+ * page-aware consumers use `doc.pages` + `doc.activePageId`.
+ */
 export interface DashboardDoc {
+  version: number;
   title: string;
   theme: ThemeSettings;
   filters: GlobalFilters;
+  pages: Page[];
+  activePageId: string;
+  /** Mirror of the active page's tiles (back-compat seam for v1 consumers). */
   tiles: Tile[];
+  crossFilter: CrossFilter | null;
+  calculatedFields: CalculatedField[];
+  views: ViewDef[];
+}
+
+/**
+ * Any historical doc shape accepted by resetDashboard/migrateDoc:
+ * v1 docs have only {title, theme, filters, tiles}.
+ */
+export interface DashboardDocInput {
+  version?: number;
+  title: string;
+  theme: ThemeSettings;
+  filters: GlobalFilters;
+  tiles?: Tile[];
+  pages?: Page[];
+  activePageId?: string;
+  crossFilter?: CrossFilter | null;
+  calculatedFields?: CalculatedField[];
+  views?: ViewDef[];
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +343,7 @@ export interface ActionMeta {
 export interface ActionOk {
   ok: true;
   tileId?: string;
+  pageId?: string;
 }
 
 export interface ActionConflict {
@@ -262,6 +449,38 @@ export interface DashboardStore {
     meta: ActionMeta,
   ): ActionResult;
 
+  // pages (undoable; addPage/switchPage also change the active page)
+  addPage(name: string, meta: ActionMeta): ActionResult;
+  renamePage(pageId: string, name: string, meta: ActionMeta): ActionResult;
+  removePage(pageId: string, meta: ActionMeta): ActionResult;
+  switchPage(pageId: string, meta: ActionMeta): ActionResult;
+
+  // cross-filter (undoable; get_user_focus reports it)
+  setCrossFilter(filter: CrossFilter, meta: ActionMeta): ActionResult;
+  clearCrossFilter(meta: ActionMeta): ActionResult;
+  /** Toggle a tile's cross-filter opt-out. */
+  setTileIgnoreCrossFilter(
+    tileId: string,
+    ignore: boolean,
+    meta: ActionMeta,
+  ): ActionResult;
+
+  /** Replace a tile's spec.filters (empty array clears). Not for markdown. */
+  setTileFilters(
+    tileId: string,
+    filters: TileFilter[],
+    meta: ActionMeta,
+  ): ActionResult;
+
+  // calculated fields / views registries (undoable)
+  addCalculatedField(
+    field: Omit<CalculatedField, "kind"> & { kind?: CalculatedField["kind"] },
+    meta: ActionMeta,
+  ): ActionResult;
+  removeCalculatedField(name: string, meta: ActionMeta): ActionResult;
+  addView(view: ViewDef, meta: ActionMeta): ActionResult;
+  removeView(name: string, meta: ActionMeta): ActionResult;
+
   undo(): ActionResult;
   redo(): ActionResult;
 
@@ -272,6 +491,9 @@ export interface DashboardStore {
   /** UI acknowledges a glow so it can re-trigger on the next agent edit. */
   clearAgentPulse(tileId: string): void;
 
-  /** Replace the whole document + reset history (load/import/tests). */
-  resetDashboard(doc?: DashboardDoc): void;
+  /**
+   * Replace the whole document + reset history (load/import/tests).
+   * Runs migrateDoc: v1 docs (flat tiles[]) become one "Overview" page.
+   */
+  resetDashboard(doc?: DashboardDocInput): void;
 }

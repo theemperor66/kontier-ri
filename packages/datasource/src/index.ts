@@ -8,6 +8,7 @@ export type {
 export {
   ReadOnlySQLError,
   assertReadOnly,
+  assertSelectOnly,
   applyRowCap,
   quoteIdent,
   stripLiteralsAndComments,

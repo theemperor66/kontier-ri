@@ -7,7 +7,20 @@ import * as z from "zod";
  */
 
 export const tileTypeSchema = z.enum(["kpi", "chart", "table", "markdown"]);
-export const chartTypeSchema = z.enum(["line", "bar", "area", "pie"]);
+export const chartTypeSchema = z.enum([
+  "line",
+  "bar",
+  "area",
+  "pie",
+  "scatter",
+  "combo",
+  "donut",
+  "hbar",
+  "stacked100",
+  "funnel",
+  "heatmap",
+  "radar",
+]);
 export const aggSchema = z.enum([
   "sum",
   "avg",
@@ -19,6 +32,12 @@ export const aggSchema = z.enum([
 ]);
 export const kpiFormatSchema = z.enum(["currency", "number", "percent"]);
 export const filterOpSchema = z.enum(["eq", "in", "between", "contains"]);
+export const valueFormatSchema = z.enum([
+  "currency",
+  "number",
+  "percent",
+  "compact",
+]);
 
 export const layoutSchema = z
   .object({
@@ -26,6 +45,71 @@ export const layoutSchema = z
     y: z.number().int().min(0),
     w: z.number().int().min(1).max(12),
     h: z.number().int().min(1).max(24),
+  })
+  .strict();
+
+// --- shared spec fragments (PLAN-V2) ----------------------------------------
+
+export const tileFilterValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.union([z.string(), z.number()])).min(1).max(50),
+]);
+
+export const tileFilterSchema = z
+  .object({
+    column: z.string().min(1),
+    op: filterOpSchema,
+    value: tileFilterValueSchema,
+  })
+  .strict();
+
+export const tileFiltersSchema = z.array(tileFilterSchema).max(10);
+
+export const valueFormatOptionsSchema = z
+  .object({
+    style: valueFormatSchema,
+    currency: z.string().length(3).optional(),
+  })
+  .strict();
+
+export const formatRuleSchema = z
+  .object({
+    op: z.enum(["lt", "lte", "gt", "gte", "eq"]),
+    value: z.number(),
+    color: z.string().min(1),
+  })
+  .strict();
+
+export const tileFormatSchema = z
+  .object({
+    value: z.union([valueFormatSchema, valueFormatOptionsSchema]).optional(),
+    y2: z.union([valueFormatSchema, valueFormatOptionsSchema]).optional(),
+    rules: z.array(formatRuleSchema).max(10).optional(),
+  })
+  .strict();
+
+export const referenceLineSchema = z
+  .object({
+    value: z.number(),
+    label: z.string().min(1).max(60).optional(),
+    color: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const tileAnalyticsSchema = z
+  .object({
+    trendline: z.boolean().optional(),
+    referenceLine: referenceLineSchema.optional(),
+  })
+  .strict();
+
+export const seriesConfigSchema = z
+  .object({
+    key: z.string().min(1),
+    type: z.enum(["bar", "line"]).optional(),
+    axis: z.enum(["left", "right"]).optional(),
   })
   .strict();
 
@@ -37,8 +121,10 @@ export const kpiSpecSchema = z
     sql: z.string().min(1).optional(),
     measure: z.string().min(1).optional(),
     agg: aggSchema.optional(),
-    format: kpiFormatSchema,
+    format: z.union([kpiFormatSchema, valueFormatOptionsSchema]),
     compare: z.literal("prev_period").optional(),
+    filters: tileFiltersSchema.optional(),
+    rules: z.array(formatRuleSchema).max(10).optional(),
   })
   .strict();
 
@@ -54,8 +140,16 @@ export const chartQuerySchema = z.union([
       measures: z.array(chartMeasureSchema).min(1).max(5),
       orderBy: z.string().min(1).optional(),
       limit: z.number().int().min(1).max(10000).optional(),
+      othersBucket: z.boolean().optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (q) => !q.othersBucket || (q.limit !== undefined && q.dims.length === 1),
+      {
+        message:
+          "othersBucket needs a limit (the N of top-N) and exactly one dim.",
+      },
+    ),
 ]);
 
 export const chartSpecSchema = z
@@ -66,7 +160,13 @@ export const chartSpecSchema = z
     stacked: z.boolean().optional(),
     xKey: z.string().min(1),
     seriesKeys: z.array(z.string().min(1)).max(12).optional(),
+    yKey: z.string().min(1).optional(),
+    series: z.array(seriesConfigSchema).max(12).optional(),
+    legend: z.boolean().optional(),
     color: z.string().min(1).optional(),
+    filters: tileFiltersSchema.optional(),
+    analytics: tileAnalyticsSchema.optional(),
+    format: tileFormatSchema.optional(),
   })
   .strict();
 
@@ -75,6 +175,8 @@ export const tableSpecSchema = z
     dataset: z.string().min(1),
     sql: z.string().min(1),
     pageSize: z.number().int().min(1).max(25).optional(),
+    filters: tileFiltersSchema.optional(),
+    format: tileFormatSchema.optional(),
   })
   .strict();
 
