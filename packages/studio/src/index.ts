@@ -24,14 +24,29 @@ export { migrateDoc, withActivePageMirror, V1_PAGE_ID } from "./migrate";
 // Zod schemas (tool inputs + tile specs; all .strict()).
 export * as schemas from "./schemas";
 
-// Tile SQL / summary helpers (shared with tile renderers in apps/web).
+// Tile SQL / summary helpers — THE single SQL authority (PLAN-V2):
+// buildTileQuery(tile, ctx) applies global/tile filters, date range,
+// cross-filter and calculated-field expansion. apps/web consumes these.
 export {
   aggExpr,
   buildChartSQL,
+  buildTileQuery,
   buildTileQuerySQL,
+  buildWhereClauses,
+  filterClause,
   measureAlias,
+  measureExpr,
+  pickDateColumn,
   plottableAggExpr,
+  sqlLiteral,
   summarizeSpec,
+  wrapWithClauses,
+} from "./tile-sql";
+export type {
+  BuiltTileQuery,
+  ColumnInfo,
+  DatasetInfo,
+  TileQueryContext,
 } from "./tile-sql";
 
 // WebMCP: hook + tool catalog + mounting components.
