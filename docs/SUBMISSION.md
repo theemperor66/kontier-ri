@@ -127,3 +127,29 @@ product, Kontier — because this is the future analytics engine of a real SaaS.
 One interface swap connects it to any backend. Twenty-two tools, one canvas,
 two kinds of hands. This is what the agent-native web looks like when humans
 stay in charge."
+
+## Judge testing instructions (paste into the submission form)
+
+Option A — ChatGPT in-app browser (recommended, zero setup):
+1. Open the ChatGPT desktop app, open the built-in browser, and go to: <LIVE_URL>
+2. The WebMCP pill in the top bar turns green: "WebMCP · 19 tools".
+3. Click "Load demo dashboard" (or upload any CSV — data stays in your browser).
+4. Ask the agent, e.g.:
+   - "Look at my dashboard and tell me what stands out."
+   - "Add a KPI for average revenue per customer."
+   - "Find the churn spike and explain what caused it. Add a drill-down chart."
+5. Co-work: drag/resize a tile, recolor a chart (select it — 3 extra tools appear),
+   then brush a date range on the MRR chart and ask "why did this happen?"
+   The agent reads your brush selection via get_user_focus.
+6. Try to make it misbehave: ask it to DROP a table (read-only guard refuses),
+   or to overwrite a title you just edited (conflict rule makes it ask you first).
+7. Every agent edit glows violet with an "AI" chip; the activity feed (bell icon)
+   shows who did what, with one-click undo.
+
+Option B — Google Chrome 149+:
+1. chrome://flags/#enable-webmcp-testing -> Enabled -> restart Chrome.
+2. Open <LIVE_URL> and use Chrome's built-in AI agent (or the Model Context Tool
+   Inspector extension) — same flow as above.
+
+No login, no credentials, free of charge. Raw data never leaves the browser:
+SQL runs locally via DuckDB-WASM; the agent sees only aggregates it queries.
