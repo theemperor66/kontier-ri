@@ -99,7 +99,9 @@ export function buildDemoDoc(mode: "dark" | "light"): DashboardDoc {
           },
           chartType: "bar",
           xKey: "month",
-          color: "var(--chart-5)",
+          // Churn is the alarm tile of the demo story — it must read as a
+          // warning, not as neutral series ink (chart-5 gray flattened it).
+          color: "var(--destructive)",
         },
         annotations: [],
       },
