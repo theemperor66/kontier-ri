@@ -2,8 +2,27 @@ import { expect, test, type Page } from "@playwright/test";
 
 /**
  * Shell e2e: command palette, templates, page tabs, persistence (build ->
- * reload -> everything back), presentation mode, cross-filter chip.
+ * reload -> everything back), presentation mode, cross-filter chip,
+ * missing-dataset UX after reload.
  */
+
+const MOCK_MODEL_CONTEXT = `
+  window.__registeredTools = new Map();
+  Object.defineProperty(document, "modelContext", {
+    configurable: true,
+    value: {
+      registerTool(tool, options) {
+        window.__registeredTools.set(tool.name, tool);
+        if (options && options.signal) {
+          options.signal.addEventListener("abort", () => {
+            window.__registeredTools.delete(tool.name);
+          });
+        }
+        return Promise.resolve();
+      },
+    },
+  });
+`;
 
 async function waitReady(page: Page) {
   await page.goto("/");
@@ -112,4 +131,58 @@ test("cross-filter: clicking a tile value sets the chip; clearing restores", asy
 
   await page.getByTestId("clear-cross-filter").click();
   await expect(chip).toHaveCount(0);
+});
+
+test("uploaded dataset does not survive reload; tile explains re-upload", async ({
+  page,
+}) => {
+  await page.addInitScript(MOCK_MODEL_CONTEXT);
+  await waitReady(page);
+
+  // Upload an in-memory CSV (in-memory DuckDB: it cannot survive a reload).
+  await page
+    .locator('input[type=file][accept=".csv,.parquet"]')
+    .first()
+    .setInputFiles({
+      name: "ephemeral.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from("a,b\n1,2\n3,4\n"),
+    });
+
+  // Agent adds a KPI on the uploaded dataset; it resolves live data (2 rows).
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const tools = (
+          window as never as {
+            __registeredTools: Map<
+              string,
+              { execute: (i: unknown, o: { signal: AbortSignal }) => Promise<unknown> }
+            >;
+          }
+        ).__registeredTools;
+        const t = tools.get("add_tile");
+        if (!t) return "no-tool";
+        const r = (await t.execute(
+          {
+            type: "kpi",
+            title: "Ephemeral rows",
+            spec: { dataset: "ephemeral", measure: "*", agg: "count", format: "number" },
+          },
+          { signal: new AbortController().signal },
+        )) as { ok?: boolean };
+        return r.ok ? "ok" : JSON.stringify(r);
+      }),
+    )
+    .toBe("ok");
+  const tile = page.locator("[data-tile-type=kpi]", { hasText: "Ephemeral rows" });
+  await expect(tile).toContainText("2", { timeout: 30_000 });
+
+  // Reload: the dashboard doc persists, the uploaded table is gone. The tile
+  // must explain itself instead of spinning or dumping a raw catalog error.
+  await page.waitForTimeout(900); // autosave debounce
+  await page.reload();
+  const restored = page.locator("[data-tile-type=kpi]", { hasText: "Ephemeral rows" });
+  await expect(restored).toHaveCount(1, { timeout: 60_000 });
+  await expect(restored).toContainText("Re-upload ephemeral", { timeout: 30_000 });
 });
