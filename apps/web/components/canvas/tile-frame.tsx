@@ -70,21 +70,24 @@ export const TileFrame = memo(function TileFrame({
   onDragHandleDown,
   onResizeHandleDown,
 }: TileFrameProps) {
-  const selected = useDashboardStore(
-    (s) => s.selection.selectedTileId === tile.id,
-  );
+  const selected = useDashboardStore((s) => s.selectedTileId === tile.id);
   const pulseAt = useDashboardStore((s) => s.agentPulse[tile.id]);
   const selectTile = useDashboardStore((s) => s.selectTile);
   const setHoveredTile = useDashboardStore((s) => s.setHoveredTile);
   const removeTile = useDashboardStore((s) => s.removeTile);
-  const addTile = useDashboardStore((s) => s.addTile);
   const undo = useDashboardStore((s) => s.undo);
+  const clearAgentPulse = useDashboardStore((s) => s.clearAgentPulse);
   const pulsing = useRecentPulse(pulseAt);
   const Icon = TYPE_ICON[tile.type];
 
+  // Acknowledge the glow once it finishes so the next agent edit re-triggers.
+  useEffect(() => {
+    if (!pulsing && pulseAt != null) clearAgentPulse(tile.id);
+  }, [pulsing, pulseAt, clearAgentPulse, tile.id]);
+
   const handleRemove = (e: React.MouseEvent) => {
     e.stopPropagation();
-    removeTile({ tileId: tile.id }, { origin: "human", label: `Removed “${tile.title}”` });
+    removeTile(tile.id, { origin: "human", label: `Removed “${tile.title}”` });
     toast(`Removed “${tile.title}”`, {
       action: {
         label: "Undo",
@@ -93,7 +96,6 @@ export const TileFrame = memo(function TileFrame({
       duration: 10000,
     });
   };
-  void addTile;
 
   return (
     <div
@@ -146,11 +148,11 @@ export const TileFrame = memo(function TileFrame({
       <div className="min-h-0 flex-1 px-3 pb-3 pt-1">
         <TileBody tile={tile} />
       </div>
-      {tile.annotations && tile.annotations.length > 0 ? (
+      {tile.annotations.length > 0 ? (
         <div className="flex flex-wrap gap-1 border-t border-border/60 px-3 py-1.5">
-          {tile.annotations.map((a, i) => (
+          {tile.annotations.map((a) => (
             <span
-              key={i}
+              key={a.id}
               className="inline-flex max-w-full items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-300"
             >
               <Note weight="fill" className="size-2.5 shrink-0" />

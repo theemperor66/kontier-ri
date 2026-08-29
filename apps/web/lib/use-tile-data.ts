@@ -29,8 +29,8 @@ export interface TileData {
 
 export function useTileData(tile: Tile): TileData {
   const { datasets, dataVersion, status } = useDataSource();
-  const filters = useDashboardStore((s) => s.doc.filters);
-  const dateRange = useDashboardStore((s) => s.doc.dateRange);
+  const filters = useDashboardStore((s) => s.doc.filters.filters);
+  const dateRange = useDashboardStore((s) => s.doc.filters.dateRange);
 
   const built: BuiltQuery | null = useMemo(() => {
     if (tile.type === "markdown") return null;

@@ -12,9 +12,9 @@ function filterText(f: GlobalFilter): string {
 }
 
 export function FilterBar() {
-  const filters = useDashboardStore((s) => s.doc.filters);
-  const dateRange = useDashboardStore((s) => s.doc.dateRange);
-  const brushed = useDashboardStore((s) => s.selection.brushedRange);
+  const filters = useDashboardStore((s) => s.doc.filters.filters);
+  const dateRange = useDashboardStore((s) => s.doc.filters.dateRange);
+  const brushed = useDashboardStore((s) => s.brushedRange);
   const setFilters = useDashboardStore((s) => s.setFilter);
   const clearFilters = useDashboardStore((s) => s.clearFilters);
   const setDateRange = useDashboardStore((s) => s.setDateRange);
@@ -22,16 +22,12 @@ export function FilterBar() {
   void setFilters;
 
   const removeFilter = (column: string) => {
-    // Contract-safe removal: rebuild remaining filters via clear + set.
+    // Contract-safe removal: clear, then re-apply the remaining filters.
     const rest = filters.filter((f) => f.column !== column);
-    const range = dateRange;
     clearFilters({ origin: "human", label: `Removed filter on ${column}` });
     const store = useDashboardStore.getState();
     for (const f of rest) {
       store.setFilter(f, { origin: "human", label: `Kept filter ${filterText(f)}` });
-    }
-    if (range) {
-      store.setDateRange(range, { origin: "human", label: "Kept date range" });
     }
   };
 

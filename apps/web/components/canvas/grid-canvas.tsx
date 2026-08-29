@@ -132,10 +132,10 @@ export function GridCanvas({ tiles }: { tiles: Tile[] }) {
             useDashboardStore
               .getState()
               .doc.tiles.find((t) => t.id === cur.tileId)?.title ?? "tile";
-          moveTile(
-            { tileId: cur.tileId, ...snapped },
-            { origin: "human", label: `${verb} “${title}”` },
-          );
+          moveTile(cur.tileId, snapped, {
+            origin: "human",
+            label: `${verb} “${title}”`,
+          });
         }
       };
       window.addEventListener("pointermove", onMove);

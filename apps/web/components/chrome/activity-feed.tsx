@@ -20,9 +20,9 @@ export function ActivityFeed({
   open: boolean;
   onClose: () => void;
 }) {
-  const activity = useDashboardStore((s) => s.activity);
-  const past = useDashboardStore((s) => s._past);
-  const undoActivity = useDashboardStore((s) => s.undoActivity);
+  const activity = useDashboardStore((s) => s.activityLog);
+  const undoStack = useDashboardStore((s) => s.undoStack);
+  const undo = useDashboardStore((s) => s.undo);
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export function ActivityFeed({
     return () => clearInterval(t);
   }, [open]);
 
-  const undoableId = past[past.length - 1]?.activityId;
+  const undoableId = undoStack[undoStack.length - 1]?.id;
 
   return (
     <aside
@@ -103,7 +103,7 @@ export function ActivityFeed({
                       size="icon-sm"
                       aria-label={`Undo: ${entry.label}`}
                       className="opacity-0 transition-opacity group-hover/entry:opacity-100"
-                      onClick={() => undoActivity(entry.id)}
+                      onClick={() => undo()}
                     >
                       <ArrowCounterClockwise className="size-3.5" />
                     </Button>

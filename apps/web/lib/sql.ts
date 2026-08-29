@@ -5,6 +5,7 @@
  */
 
 import type { ColumnMeta, DatasetMeta } from "@kontier-ri/datasource";
+import { aggExpr, measureAlias } from "@kontier-ri/studio";
 import type {
   ChartSpec,
   DateRange,
@@ -134,7 +135,7 @@ export function buildChartQuery(
   dateRange: DateRange | null,
 ): BuiltQuery {
   const meta = findDataset(datasets, spec.dataset);
-  if (spec.query.sql) {
+  if ("sql" in spec.query) {
     const clauses = buildWhereClauses(
       meta?.columns ?? [],
       filters,
@@ -146,33 +147,32 @@ export function buildChartQuery(
       fallbackSQL: spec.query.sql,
     };
   }
-  const dims = spec.query.dims ?? [];
-  const measures = spec.query.measures ?? [];
+  const q = spec.query;
+  const CAST_AGGS = ["sum", "avg", "count", "count_distinct"];
   const selectParts = [
-    ...dims.map(quoteIdent),
-    ...measures.map((m) => {
-      const expr = `${m.agg}(${m.col === "*" ? "*" : quoteIdent(m.col)})`;
+    ...q.dims.map(quoteIdent),
+    ...q.measures.map((m) => {
+      const expr = aggExpr(m.agg, m.col);
       // sum/avg/count on BIGINT/DECIMAL yield HUGEINT/DECIMAL, which do not
       // survive as plain JS numbers — cast to DOUBLE for charting.
-      const cast = ["sum", "avg", "count"].includes(m.agg.toLowerCase())
-        ? `CAST(${expr} AS DOUBLE)`
-        : expr;
-      return `${cast} AS ${quoteIdent(`${m.agg}_${m.col === "*" ? "rows" : m.col}`)}`;
+      const cast = CAST_AGGS.includes(m.agg) ? `CAST(${expr} AS DOUBLE)` : expr;
+      // Alias matches @kontier-ri/studio measureAlias -> stable seriesKeys.
+      return `${cast} AS ${quoteIdent(measureAlias(m))}`;
     }),
   ];
   const clauses = meta
     ? buildWhereClauses(meta.columns, filters, dateRange)
     : [];
   const groupBy =
-    dims.length > 0
-      ? ` GROUP BY ${dims.map((_, i) => i + 1).join(", ")}`
+    q.dims.length > 0
+      ? ` GROUP BY ${q.dims.map((_, i) => i + 1).join(", ")}`
       : "";
-  const orderBy = spec.query.orderBy
-    ? ` ORDER BY ${spec.query.orderBy}`
-    : dims.length > 0
+  const orderBy = q.orderBy
+    ? ` ORDER BY ${q.orderBy}`
+    : q.dims.length > 0
       ? " ORDER BY 1"
       : "";
-  const limit = ` LIMIT ${Math.min(spec.query.limit ?? 500, 2000)}`;
+  const limit = ` LIMIT ${Math.min(q.limit ?? 500, 2000)}`;
   const sql = `SELECT ${selectParts.join(", ")} FROM ${quoteIdent(spec.dataset)}${whereSQL(clauses)}${groupBy}${orderBy}${limit}`;
   return { sql };
 }
@@ -192,8 +192,6 @@ export function buildKpiQuery(
     };
   }
   const agg = spec.agg ?? "sum";
-  const measure =
-    !spec.measure || spec.measure === "*" ? "*" : quoteIdent(spec.measure);
   const clauses = meta
     ? buildWhereClauses(meta.columns, filters, dateRange)
     : [];
@@ -206,18 +204,20 @@ export function buildKpiQuery(
         ? `strftime(CAST(${quoteIdent(dateCol.name)} AS DATE), '%Y-%m')`
         : `substr(CAST(${quoteIdent(dateCol.name)} AS VARCHAR), 1, 7)`;
       const where = whereSQL(clauses);
-      const aggExpr = ["sum", "avg", "count"].includes(agg)
-        ? `CAST(${agg}(${measure}) AS DOUBLE)`
-        : `${agg}(${measure})`;
-      const sql = `WITH per_month AS (SELECT ${monthExpr} AS __m, ${aggExpr} AS __v FROM ${base}${where} GROUP BY 1), ranked AS (SELECT __m, __v, row_number() OVER (ORDER BY __m DESC) AS __rn FROM per_month) SELECT max(CASE WHEN __rn = 1 THEN __v END) AS value, max(CASE WHEN __rn = 2 THEN __v END) AS prev FROM ranked`;
+      const baseExpr = aggExpr(agg, spec.measure ?? "*");
+      const valueExpr = ["sum", "avg", "count", "count_distinct"].includes(agg)
+        ? `CAST(${baseExpr} AS DOUBLE)`
+        : baseExpr;
+      const sql = `WITH per_month AS (SELECT ${monthExpr} AS __m, ${valueExpr} AS __v FROM ${base}${where} GROUP BY 1), ranked AS (SELECT __m, __v, row_number() OVER (ORDER BY __m DESC) AS __rn FROM per_month) SELECT max(CASE WHEN __rn = 1 THEN __v END) AS value, max(CASE WHEN __rn = 2 THEN __v END) AS prev FROM ranked`;
       return { sql };
     }
   }
-  const aggExpr = ["sum", "avg", "count"].includes(agg)
-    ? `CAST(${agg}(${measure}) AS DOUBLE)`
-    : `${agg}(${measure})`;
+  const baseExpr = aggExpr(agg, spec.measure ?? "*");
+  const valueExpr = ["sum", "avg", "count", "count_distinct"].includes(agg)
+    ? `CAST(${baseExpr} AS DOUBLE)`
+    : baseExpr;
   return {
-    sql: `SELECT ${aggExpr} AS value FROM ${base}${whereSQL(clauses)}`,
+    sql: `SELECT ${valueExpr} AS value FROM ${base}${whereSQL(clauses)}`,
   };
 }
 

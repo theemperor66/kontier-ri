@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useTheme } from "next-themes";
 import { Toaster } from "sonner";
+import { SelectedTileTools, WebMCPTools } from "@kontier-ri/studio";
 import { useDashboardStore } from "@/lib/dashboard-store";
-import { DataProvider } from "@/lib/datasource";
+import { DataProvider, dataSource } from "@/lib/datasource";
 import { buildDemoDoc } from "@/lib/demo";
 import { GridCanvas } from "@/components/canvas/grid-canvas";
 import { TopBar } from "@/components/chrome/top-bar";
@@ -13,13 +14,13 @@ import { ActivityFeed } from "@/components/chrome/activity-feed";
 import { EmptyState } from "@/components/chrome/empty-state";
 import { cn } from "@/lib/utils";
 
-/** Sync doc.theme (store, agent-controllable) -> next-themes class. */
+/** Sync doc.theme.mode (store, agent-controllable) -> next-themes class. */
 function ThemeSync() {
-  const theme = useDashboardStore((s) => s.doc.theme);
+  const mode = useDashboardStore((s) => s.doc.theme.mode);
   const { setTheme } = useTheme();
   useEffect(() => {
-    setTheme(theme);
-  }, [theme, setTheme]);
+    setTheme(mode);
+  }, [mode, setTheme]);
   return null;
 }
 
@@ -57,20 +58,13 @@ function Hotkeys() {
 
 function CanvasArea() {
   const tiles = useDashboardStore((s) => s.doc.tiles);
-  const theme = useDashboardStore((s) => s.doc.theme);
-  const loadDoc = useDashboardStore((s) => s.loadDoc);
+  const mode = useDashboardStore((s) => s.doc.theme.mode);
+  const resetDashboard = useDashboardStore((s) => s.resetDashboard);
   const selectTile = useDashboardStore((s) => s.selectTile);
 
   if (tiles.length === 0) {
     return (
-      <EmptyState
-        onLoadDemo={() =>
-          loadDoc(buildDemoDoc(theme), {
-            origin: "human",
-            label: "Loaded demo dashboard",
-          })
-        }
-      />
+      <EmptyState onLoadDemo={() => resetDashboard(buildDemoDoc(mode))} />
     );
   }
   return (
@@ -88,10 +82,14 @@ function CanvasArea() {
 
 export function StudioApp() {
   const [activityOpen, setActivityOpen] = useState(false);
-  const resolvedTheme = useDashboardStore((s) => s.doc.theme);
+  const resolvedTheme = useDashboardStore((s) => s.doc.theme.mode);
 
   return (
     <DataProvider>
+      {/* WebMCP: 19 static tools + 3 selection-scoped tools (top-level mount;
+          registration is a no-op when document.modelContext is absent). */}
+      <WebMCPTools dataSource={dataSource} />
+      <SelectedTileTools dataSource={dataSource} />
       <ThemeSync />
       <Hotkeys />
       <div className="flex min-h-dvh flex-col">

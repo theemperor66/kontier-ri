@@ -26,14 +26,14 @@ export function TopBar({
   activityOpen: boolean;
 }) {
   const title = useDashboardStore((s) => s.doc.title);
-  const theme = useDashboardStore((s) => s.doc.theme);
+  const mode = useDashboardStore((s) => s.doc.theme.mode);
   const setTitle = useDashboardStore((s) => s.setTitle);
   const setTheme = useDashboardStore((s) => s.setTheme);
   const undo = useDashboardStore((s) => s.undo);
   const redo = useDashboardStore((s) => s.redo);
-  const canUndo = useDashboardStore((s) => s._past.length > 0);
-  const canRedo = useDashboardStore((s) => s._future.length > 0);
-  const activityCount = useDashboardStore((s) => s.activity.length);
+  const canUndo = useDashboardStore((s) => s.undoStack.length > 0);
+  const canRedo = useDashboardStore((s) => s.redoStack.length > 0);
+  const activityCount = useDashboardStore((s) => s.activityLog.length);
   const { importFiles, status, statusDetail } = useDataSource();
   const fileRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(title);
@@ -163,19 +163,22 @@ export function TopBar({
               </span>
             </Button>
           </Tooltip>
-          <Tooltip content={theme === "dark" ? "Light mode" : "Dark mode"}>
+          <Tooltip content={mode === "dark" ? "Light mode" : "Dark mode"}>
             <Button
               variant="ghost"
               size="icon"
               aria-label="Toggle theme"
               onClick={() =>
-                setTheme(theme === "dark" ? "light" : "dark", {
-                  origin: "human",
-                  label: `Switched to ${theme === "dark" ? "light" : "dark"} mode`,
-                })
+                setTheme(
+                  { mode: mode === "dark" ? "light" : "dark" },
+                  {
+                    origin: "human",
+                    label: `Switched to ${mode === "dark" ? "light" : "dark"} mode`,
+                  },
+                )
               }
             >
-              {theme === "dark" ? (
+              {mode === "dark" ? (
                 <Sun className="size-4" />
               ) : (
                 <Moon className="size-4" />

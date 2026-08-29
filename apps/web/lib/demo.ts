@@ -1,12 +1,11 @@
 import type { DashboardDoc } from "@/lib/dashboard-store";
 
 /** Demo dashboard seeded from the public/demo CSVs (24 months of SaaS billing). */
-export function buildDemoDoc(theme: "dark" | "light"): DashboardDoc {
+export function buildDemoDoc(mode: "dark" | "light"): DashboardDoc {
   return {
     title: "SaaS revenue overview",
-    theme,
-    filters: [],
-    dateRange: null,
+    theme: { mode },
+    filters: { filters: [], dateRange: null },
     tiles: [
       {
         id: "demo_kpi_mrr",
@@ -19,6 +18,7 @@ export function buildDemoDoc(theme: "dark" | "light"): DashboardDoc {
           format: "currency",
           compare: "prev_period",
         },
+        annotations: [],
       },
       {
         id: "demo_kpi_subs",
@@ -30,6 +30,7 @@ export function buildDemoDoc(theme: "dark" | "light"): DashboardDoc {
           sql: "SELECT count(*) AS value FROM subscriptions WHERE status = 'active'",
           format: "number",
         },
+        annotations: [],
       },
       {
         id: "demo_kpi_success",
@@ -41,6 +42,7 @@ export function buildDemoDoc(theme: "dark" | "light"): DashboardDoc {
           sql: "SELECT sum(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END)::DOUBLE / count(*) AS value FROM charges",
           format: "percent",
         },
+        annotations: [],
       },
       {
         id: "demo_kpi_customers",
@@ -52,6 +54,7 @@ export function buildDemoDoc(theme: "dark" | "light"): DashboardDoc {
           sql: "SELECT count(*) AS value FROM customers",
           format: "number",
         },
+        annotations: [],
       },
       {
         id: "demo_chart_mrr",
@@ -66,6 +69,7 @@ export function buildDemoDoc(theme: "dark" | "light"): DashboardDoc {
           chartType: "line",
           xKey: "month",
         },
+        annotations: [],
       },
       {
         id: "demo_chart_planmix",
@@ -81,6 +85,7 @@ export function buildDemoDoc(theme: "dark" | "light"): DashboardDoc {
           stacked: true,
           xKey: "month",
         },
+        annotations: [],
       },
       {
         id: "demo_chart_churn",
@@ -96,6 +101,7 @@ export function buildDemoDoc(theme: "dark" | "light"): DashboardDoc {
           xKey: "month",
           color: "var(--chart-5)",
         },
+        annotations: [],
       },
       {
         id: "demo_table_failed",
@@ -107,6 +113,7 @@ export function buildDemoDoc(theme: "dark" | "light"): DashboardDoc {
           sql: "SELECT strftime(CAST(created_at AS TIMESTAMP), '%Y-%m-%d') AS date, customer_id, round(amount, 2) AS amount, currency, gateway, failure_code, attempt FROM charges WHERE status = 'failed' ORDER BY created_at DESC LIMIT 200",
           pageSize: 8,
         },
+        annotations: [],
       },
     ],
   };
