@@ -92,5 +92,80 @@
   }
   body {
     @apply bg-background text-foreground;
+    overflow-x: clip;
   }
+}
+
+
+/* --- Kontier RI: co-presence + canvas ------------------------------------ */
+
+/* Glow pulse on tiles the agent just touched. */
+@keyframes agent-glow {
+  0% {
+    box-shadow: 0 0 0 1px oklch(0.62 0.21 292 / 70%), 0 0 24px 2px oklch(0.62 0.21 292 / 35%);
+  }
+  70% {
+    box-shadow: 0 0 0 1px oklch(0.62 0.21 292 / 45%), 0 0 16px 1px oklch(0.62 0.21 292 / 18%);
+  }
+  100% {
+    box-shadow: 0 0 0 1px oklch(0.62 0.21 292 / 0%), 0 0 0 0 oklch(0.62 0.21 292 / 0%);
+  }
+}
+
+.agent-touched {
+  animation: agent-glow 2.4s ease-out 2;
+  border-color: oklch(0.62 0.21 292 / 55%) !important;
+}
+
+/* Attribution chip fade-out. */
+@keyframes chip-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.chip-fading {
+  animation: chip-fade 6s ease-out forwards;
+}
+
+@keyframes tile-enter {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.tile-enter {
+  animation: tile-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.status-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+/* Recharts polish */
+.recharts-cartesian-axis-tick text {
+  fill: var(--muted-foreground);
+  font-size: 11px;
+}
+.recharts-cartesian-grid line {
+  stroke: var(--border);
+}
+.recharts-tooltip-cursor {
+  fill: var(--muted);
+  opacity: 0.4;
+}
+.recharts-brush > rect:first-of-type {
+  fill: transparent;
+  stroke: var(--border);
+}
+.recharts-brush .recharts-brush-slide {
+  fill: var(--muted-foreground);
+  fill-opacity: 0.15;
+}
+.recharts-brush .recharts-brush-traveller rect {
+  fill: var(--muted-foreground);
+}
+.recharts-brush-texts text {
+  fill: var(--muted-foreground);
+  font-size: 10px;
 }
