@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowCounterClockwise,
   ArrowClockwise,
-  ChartLineUp,
   ClockCounterClockwise,
   Moon,
   Sun,
@@ -16,6 +15,7 @@ import { useDataSource } from "@/lib/datasource";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { WebMCPStatus } from "./webmcp-status";
+import { KontierWordmark } from "./kontier-wordmark";
 import { cn } from "@/lib/utils";
 
 export function TopBar({
@@ -68,15 +68,11 @@ export function TopBar({
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
       <div className="flex h-14 items-center gap-2 px-4">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <ChartLineUp weight="bold" className="size-4" />
+        <div className="flex items-center gap-2">
+          <KontierWordmark className="h-[18px] w-auto shrink-0 text-foreground" />
+          <span className="hidden translate-y-px text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:inline">
+            Revenue Intelligence
           </span>
-          <div className="hidden flex-col leading-none sm:flex">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Kontier RI
-            </span>
-          </div>
         </div>
         <div className="mx-2 h-5 w-px bg-border" />
         <input
