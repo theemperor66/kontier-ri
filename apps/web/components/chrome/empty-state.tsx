@@ -11,6 +11,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useDataSource } from "@/lib/datasource";
 
+const SUGGESTED_PROMPTS = [
+  "Profile my data and build a revenue dashboard.",
+  "Show me MRR by month and find the churn spike.",
+  "Why did churn spike? Add a drill-down chart.",
+  "Add a KPI for average revenue per customer.",
+] as const;
+
 export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
   const { importFiles, status } = useDataSource();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -76,10 +83,29 @@ export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
             }}
           />
         </div>
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-          <CursorClick className="size-3.5" />
-          Try asking: “Show me MRR by month and find the churn spike.”
-        </p>
+        <div className="mt-6">
+          <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+            <CursorClick className="size-3.5" />
+            Try asking — click to copy:
+          </p>
+          <div className="mt-2.5 flex flex-wrap items-center justify-center gap-1.5">
+            {SUGGESTED_PROMPTS.map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                className="rounded-full border border-border bg-muted/40 px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-violet-500/40 hover:bg-violet-500/10 hover:text-foreground"
+                onClick={() => {
+                  void navigator.clipboard
+                    .writeText(prompt)
+                    .then(() => toast.success("Copied — paste it to your agent."))
+                    .catch(() => toast.error("Could not access the clipboard."));
+                }}
+              >
+                “{prompt}”
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
