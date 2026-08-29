@@ -83,6 +83,36 @@ test("template instantiates from empty state; page tabs add/switch", async ({
   await expect(page.locator("[data-tile-type]")).toHaveCount(8);
 });
 
+test("demo page 2 'Growth drivers': v2 charts + calculated-field KPI render", async ({
+  page,
+}) => {
+  await loadDemo(page);
+
+  await page.getByTestId("page-tabs").getByText("Growth drivers").click();
+  await expect(page.locator("[data-tile-type]")).toHaveCount(5);
+
+  // KPI backed by the `arpu` calculated field resolves a real EUR value.
+  await expect(page.getByTestId("tile-demo_kpi_arpu")).toContainText("€", {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId("tile-demo_kpi_arpu")).not.toContainText("—");
+  // Combo (dual axis) drew bars + a line; heatmap painted cells;
+  // scatter drew its dashed trendline.
+  await expect(
+    page.locator("[data-testid=tile-demo_chart_combo] .recharts-bar-rectangle").first(),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.locator("[data-testid=tile-demo_chart_combo] .recharts-line-curve"),
+  ).toHaveCount(1);
+  await expect(
+    page.locator("[data-testid=tile-demo_chart_scatter] .recharts-scatter"),
+  ).toHaveCount(1);
+
+  // Back to page 1: the original 8 tiles are untouched.
+  await page.getByTestId("page-tabs").getByText("Overview").click();
+  await expect(page.locator("[data-tile-type]")).toHaveCount(8);
+});
+
 test("P0 persistence: dashboard survives reload with live data", async ({
   page,
 }) => {

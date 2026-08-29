@@ -80,6 +80,7 @@ function buildRevenueOverview(mode: "dark" | "light"): DashboardDoc {
           },
           chartType: "line",
           xKey: "month",
+          analytics: { trendline: true },
         },
       },
       {
@@ -105,8 +106,9 @@ function buildRevenueOverview(mode: "dark" | "light"): DashboardDoc {
           query: {
             sql: "SELECT c.segment, CAST(round(sum(i.amount_eur)) AS DOUBLE) AS revenue_eur FROM invoices i JOIN customers c USING (customer_id) WHERE i.status = 'paid' GROUP BY 1 ORDER BY 2 DESC",
           },
-          chartType: "pie",
+          chartType: "donut",
           xKey: "segment",
+          format: { value: "currency" },
         },
       },
       {
@@ -192,9 +194,9 @@ function buildChurnRetention(mode: "dark" | "light"): DashboardDoc {
           query: {
             sql: "SELECT p.name AS plan, sum(CASE WHEN s.status = 'active' THEN 1 ELSE 0 END) AS active, sum(CASE WHEN s.status <> 'active' THEN 1 ELSE 0 END) AS churned FROM subscriptions s JOIN plans p USING (plan_id) GROUP BY 1 ORDER BY 2 DESC",
           },
-          chartType: "bar",
-          stacked: true,
+          chartType: "stacked100",
           xKey: "plan",
+          legend: true,
         },
       },
       {

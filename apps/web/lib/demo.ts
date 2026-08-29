@@ -1,13 +1,32 @@
 import type { DashboardDoc } from "@/lib/dashboard-store";
 import { migrateDoc } from "@/lib/dashboard-store";
 
-/** Demo dashboard seeded from the public/demo CSVs (24 months of SaaS billing). */
+/**
+ * Demo dashboard seeded from the public/demo CSVs (24 months of SaaS billing).
+ * Page 1 ("Overview") is the original v1 demo — unchanged for video
+ * continuity. Page 2 ("Growth drivers") shows off the v2 engine: combo with
+ * dual axis, donut, scatter + trendline, heatmap, and a KPI backed by the
+ * `arpu` calculated field with conditional-formatting rules.
+ */
 export function buildDemoDoc(mode: "dark" | "light"): DashboardDoc {
   return migrateDoc({
     title: "SaaS revenue overview",
     theme: { mode },
     filters: { filters: [], dateRange: null },
-    tiles: [
+    calculatedFields: [
+      {
+        name: "arpu",
+        dataset: "invoices",
+        expression: "sum(amount_eur)/count(DISTINCT customer_id)",
+        kind: "aggregate",
+        description: "Average revenue per paying customer (EUR).",
+      },
+    ],
+    pages: [
+      {
+        id: "demo_page_overview",
+        name: "Overview",
+        tiles: [
       {
         id: "demo_kpi_mrr",
         type: "kpi",
@@ -118,6 +137,107 @@ export function buildDemoDoc(mode: "dark" | "light"): DashboardDoc {
         },
         annotations: [],
       },
+        ],
+      },
+      {
+        id: "demo_page_growth",
+        name: "Growth drivers",
+        tiles: [
+          {
+            id: "demo_kpi_arpu",
+            type: "kpi",
+            title: "ARPU (calculated field)",
+            layout: { x: 0, y: 0, w: 3, h: 2 },
+            spec: {
+              dataset: "invoices",
+              measure: "arpu",
+              format: { style: "currency", currency: "EUR" },
+              // Green once ARPU clears €600 — conditional formatting demo.
+              rules: [{ op: "gt", value: 600, color: "var(--chart-2)" }],
+            },
+            annotations: [],
+          },
+          {
+            id: "demo_chart_combo",
+            type: "chart",
+            title: "Revenue vs invoice volume",
+            layout: { x: 3, y: 0, w: 9, h: 5 },
+            spec: {
+              dataset: "invoices",
+              query: {
+                dims: ["month"],
+                measures: [
+                  { col: "amount_eur", agg: "sum" },
+                  { col: "*", agg: "count" },
+                ],
+              },
+              chartType: "combo",
+              xKey: "month",
+              legend: true,
+              series: [
+                { key: "sum_amount_eur", type: "bar", axis: "left" },
+                { key: "count", type: "line", axis: "right" },
+              ],
+              format: { value: "currency", y2: "compact" },
+            },
+            annotations: [],
+          },
+          {
+            id: "demo_chart_donut",
+            type: "chart",
+            title: "Revenue share by plan",
+            layout: { x: 0, y: 2, w: 3, h: 3 },
+            spec: {
+              dataset: "invoices",
+              query: {
+                dims: ["plan_id"],
+                measures: [{ col: "amount_eur", agg: "sum" }],
+              },
+              chartType: "donut",
+              xKey: "plan_id",
+              format: { value: "currency" },
+            },
+            annotations: [],
+          },
+          {
+            id: "demo_chart_scatter",
+            type: "chart",
+            title: "Customer value: invoices vs revenue",
+            layout: { x: 0, y: 5, w: 6, h: 5 },
+            spec: {
+              dataset: "invoices",
+              query: {
+                sql: "SELECT CAST(count(*) AS DOUBLE) AS invoices, CAST(sum(amount_eur) AS DOUBLE) AS revenue FROM invoices GROUP BY customer_id LIMIT 150",
+              },
+              chartType: "scatter",
+              xKey: "invoices",
+              seriesKeys: ["revenue"],
+              analytics: { trendline: true },
+              format: { value: { style: "currency", currency: "EUR" } },
+            },
+            annotations: [],
+          },
+          {
+            id: "demo_chart_heatmap",
+            type: "chart",
+            title: "Revenue heatmap: month × plan",
+            layout: { x: 6, y: 5, w: 6, h: 5 },
+            spec: {
+              dataset: "invoices",
+              query: {
+                dims: ["month", "plan_id"],
+                measures: [{ col: "amount_eur", agg: "sum" }],
+              },
+              chartType: "heatmap",
+              xKey: "month",
+              yKey: "plan_id",
+              format: { value: "compact" },
+            },
+            annotations: [],
+          },
+        ],
+      },
     ],
+    activePageId: "demo_page_overview",
   });
 }
