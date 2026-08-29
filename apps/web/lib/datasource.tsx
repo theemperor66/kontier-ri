@@ -17,8 +17,13 @@ import {
   type ReactNode,
 } from "react";
 import { DuckDBDataSource, type DatasetMeta } from "@kontier-ri/datasource";
+import { withBasePath } from "@/lib/base-path";
 
-export const dataSource = new DuckDBDataSource();
+// Bundles are copied into public/duckdb/ by scripts/copy-duckdb.mjs
+// (predev/prebuild), so DuckDB loads same-origin with jsDelivr as fallback.
+export const dataSource = new DuckDBDataSource({
+  bundlesBaseURL: withBasePath("/duckdb/"),
+});
 
 const DEMO_FILES: { name: string; group: string }[] = [
   { name: "plans", group: "saas_billing" },
@@ -61,7 +66,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         for (const f of DEMO_FILES) {
           setStatusDetail(`Loading ${f.name}.csv…`);
-          await dataSource.importFromURL(f.name, `/demo/${f.name}.csv`, "csv", f.group);
+          await dataSource.importFromURL(
+            f.name,
+            withBasePath(`/demo/${f.name}.csv`),
+            "csv",
+            f.group,
+          );
         }
         setDatasets(await dataSource.listDatasets());
         setDataVersion((v) => v + 1);

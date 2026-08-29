@@ -26,6 +26,31 @@ export const DEFAULT_MAX_ROWS = 10_000;
 export interface DuckDBDataSourceOptions {
   maxRows?: number;
   logLevel?: duckdb.LogLevel;
+  /**
+   * Base URL serving self-hosted duckdb-wasm bundle files (e.g. "/duckdb/",
+   * containing duckdb-{mvp,eh}.wasm + duckdb-browser-{mvp,eh}.worker.js).
+   * When set, these same-origin bundles are preferred and jsDelivr is only a
+   * fallback; when unset, bundles load from jsDelivr.
+   */
+  bundlesBaseURL?: string;
+}
+
+/** Build a DuckDBBundles map pointing at self-hosted files under `base`. */
+function selfHostedBundles(base: string): duckdb.DuckDBBundles {
+  const origin =
+    typeof globalThis.location !== "undefined" ? globalThis.location.href : undefined;
+  const abs = (file: string): string =>
+    new URL(`${base.replace(/\/?$/, "/")}${file}`, origin).href;
+  return {
+    mvp: {
+      mainModule: abs("duckdb-mvp.wasm"),
+      mainWorker: abs("duckdb-browser-mvp.worker.js"),
+    },
+    eh: {
+      mainModule: abs("duckdb-eh.wasm"),
+      mainWorker: abs("duckdb-browser-eh.worker.js"),
+    },
+  };
 }
 
 interface TableLike {
@@ -55,19 +80,41 @@ export class DuckDBDataSource implements DataSource {
   private readonly datasets = new Map<string, DatasetMeta>();
   private readonly maxRows: number;
   private readonly logLevel: duckdb.LogLevel;
+  private readonly bundlesBaseURL: string | undefined;
 
   constructor(options: DuckDBDataSourceOptions = {}) {
     this.maxRows = options.maxRows ?? DEFAULT_MAX_ROWS;
     this.logLevel = options.logLevel ?? (3 satisfies duckdb.LogLevel); // WARNING
+    this.bundlesBaseURL = options.bundlesBaseURL;
   }
 
-  /** Lazy engine init (jsDelivr bundles + blob worker; browser only). */
+  /** Pick the bundle: self-hosted (same-origin) first, jsDelivr as fallback. */
+  private async pickBundle(mod: typeof duckdb): Promise<duckdb.DuckDBBundle> {
+    if (this.bundlesBaseURL) {
+      try {
+        const candidate = await mod.selectBundle(
+          selfHostedBundles(this.bundlesBaseURL),
+        );
+        // Probe so a missing copy step fails fast into the CDN fallback
+        // instead of a cryptic wasm-compile error later.
+        const probe = await fetch(candidate.mainModule, { method: "HEAD" });
+        if (probe.ok) return candidate;
+        console.warn(
+          `DuckDB-WASM: self-hosted bundle missing (${probe.status} for ${candidate.mainModule}); falling back to jsDelivr.`,
+        );
+      } catch (err) {
+        console.warn("DuckDB-WASM: self-hosted bundle probe failed; falling back to jsDelivr.", err);
+      }
+    }
+    return mod.selectBundle(mod.getJsDelivrBundles());
+  }
+
+  /** Lazy engine init (same-origin or jsDelivr bundles + blob worker; browser only). */
   private getDB(): Promise<duckdb.AsyncDuckDB> {
     if (!this.dbPromise) {
       this.dbPromise = (async () => {
         const mod = await loadDuckDB();
-        const bundles = mod.getJsDelivrBundles();
-        const bundle = await mod.selectBundle(bundles);
+        const bundle = await this.pickBundle(mod);
         if (!bundle.mainWorker) {
           throw new Error("DuckDB-WASM: no worker bundle available.");
         }

@@ -36,6 +36,12 @@ test("demo dashboard renders 8 tiles with real query results", async ({ page }) 
   const pageErrors: string[] = [];
   page.on("pageerror", (err) => pageErrors.push(String(err)));
 
+  // DuckDB-WASM must load self-hosted from /duckdb/ (no jsDelivr at runtime).
+  const cdnRequests: string[] = [];
+  page.on("request", (req) => {
+    if (req.url().includes("jsdelivr")) cdnRequests.push(req.url());
+  });
+
   await loadDemo(page);
 
   // KPI resolves to a real number from invoices.csv (not the "—" fallback).
@@ -50,6 +56,7 @@ test("demo dashboard renders 8 tiles with real query results", async ({ page }) 
   await expect(page.getByTestId("tile-demo_table_failed")).toContainText("1/25");
 
   expect(pageErrors).toEqual([]);
+  expect(cdnRequests).toEqual([]);
 });
 
 test("WebMCP registers 19 static tools, +3 while a tile is selected", async ({
