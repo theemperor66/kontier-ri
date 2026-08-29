@@ -11,7 +11,7 @@ async function loadDuckDB(): Promise<typeof duckdb> {
     "@duckdb/duckdb-wasm/dist/duckdb-browser.mjs"
   )) as unknown as typeof duckdb;
 }
-import { applyRowCap, assertReadOnly, quoteIdent } from "./guard";
+import { applyRowCap, assertReadOnly, assertSelectOnly, quoteIdent } from "./guard";
 import { buildStatsSQL, buildTopValuesSQL, shapeProfile } from "./profile";
 import type {
   ColumnMeta,
@@ -69,6 +69,37 @@ function toJsonValue(v: unknown): unknown {
   if (v instanceof Uint8Array) return Array.from(v);
   if (Array.isArray(v)) return v.map(toJsonValue);
   return v;
+}
+
+/** Views created via createView are namespaced with this prefix. */
+export const VIEW_NAME_PREFIX = "view_";
+
+/**
+ * Turn an arbitrary label (upload filename, agent input) into a safe SQL
+ * identifier: strip diacritics, replace runs of unsafe chars with `_`,
+ * trim, guard the leading digit, never return an empty string.
+ */
+export function sanitizeDatasetName(raw: string): string {
+  const cleaned = raw
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const named = cleaned.length > 0 ? cleaned : "dataset";
+  return /^[0-9]/.test(named) ? `_${named}` : named;
+}
+
+/** First free name among `name`, `name_2`, `name_3`, ... */
+export function dedupeDatasetName(
+  name: string,
+  isTaken: (candidate: string) => boolean,
+): string {
+  if (!isTaken(name)) return name;
+  for (let i = 2; ; i++) {
+    const candidate = `${name}_${i}`;
+    if (!isTaken(candidate)) return candidate;
+  }
 }
 
 /**
@@ -178,23 +209,32 @@ export class DuckDBDataSource implements DataSource {
     group?: string,
   ): Promise<DatasetMeta> {
     this.validateName(name);
-    const db = await this.getDB();
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
     const buf = new Uint8Array(await res.arrayBuffer());
-    return this.registerBuffer(name, buf, format, group, db);
+    return this.registerBuffer(name, buf, format, group);
   }
 
-  /** Optional DataSource.importFile: CSV/Parquet upload from the browser. */
+  /**
+   * Optional DataSource.importFile: CSV/Parquet upload from the browser.
+   * Names are sanitized to safe SQL identifiers and deduped (`name_2`, ...);
+   * the original filename is kept as DatasetMeta.description.
+   */
   async importFile(file: File): Promise<DatasetMeta> {
-    const lower = file.name.toLowerCase();
-    const format = lower.endsWith(".parquet") ? "parquet" : "csv";
-    const base = (file.name.split("/").pop() ?? file.name)
-      .replace(/\.(csv|parquet)$/i, "")
-      .replace(/[^a-zA-Z0-9_]/g, "_")
-      .replace(/^([0-9])/, "_$1");
+    const original = file.name.split("/").pop() ?? file.name;
+    const format = original.toLowerCase().endsWith(".parquet")
+      ? "parquet"
+      : "csv";
+    const base = sanitizeDatasetName(original.replace(/\.(csv|parquet)$/i, ""));
+    const name = dedupeDatasetName(base, (n) => this.datasets.has(n));
     const buf = new Uint8Array(await file.arrayBuffer());
-    return this.registerBuffer(base, buf, format, "uploads");
+    return this.registerBuffer(name, buf, format, "uploads", original);
+  }
+
+  /** Register a file buffer with the engine. Overridable in tests. */
+  protected async registerFile(fileName: string, buf: Uint8Array): Promise<void> {
+    const db = await this.getDB();
+    await db.registerFileBuffer(fileName, buf);
   }
 
   private async registerBuffer(
@@ -202,12 +242,11 @@ export class DuckDBDataSource implements DataSource {
     buf: Uint8Array,
     format: "csv" | "parquet",
     group?: string,
-    dbArg?: duckdb.AsyncDuckDB,
+    description?: string,
   ): Promise<DatasetMeta> {
     this.validateName(name);
-    const db = dbArg ?? (await this.getDB());
     const fileName = `${name}.${format}`;
-    await db.registerFileBuffer(fileName, buf);
+    await this.registerFile(fileName, buf);
     const reader =
       format === "parquet"
         ? `parquet_scan('${fileName}')`
@@ -220,7 +259,13 @@ export class DuckDBDataSource implements DataSource {
     );
     const rowCount = Number(countRows[0]?.["n"] ?? 0);
     const columns = await this.describeColumns(name);
-    const meta: DatasetMeta = { name, group, rowCount, columns };
+    const meta: DatasetMeta = {
+      name,
+      group,
+      ...(description ? { description } : {}),
+      rowCount,
+      columns,
+    };
     this.datasets.set(name, meta);
     return meta;
   }
@@ -271,6 +316,58 @@ export class DuckDBDataSource implements DataSource {
     const truncated = rows.length > this.maxRows;
     const limited = truncated ? rows.slice(0, this.maxRows) : rows;
     return { columns, rows: limited, rowCount: limited.length, truncated };
+  }
+
+  /**
+   * Create (or replace) a SQL view. `name` must live in the `view_`
+   * namespace; the body must be a single SELECT (read-only guard). The view
+   * is registered as a dataset (group "views") and listed by listDatasets.
+   */
+  async createView(name: string, sql: string): Promise<DatasetMeta> {
+    this.validateName(name);
+    if (!name.startsWith(VIEW_NAME_PREFIX)) {
+      throw new Error(
+        `View names must start with "${VIEW_NAME_PREFIX}" (got ${JSON.stringify(name)}).`,
+      );
+    }
+    const existing = this.datasets.get(name);
+    if (existing && existing.group !== "views") {
+      throw new Error(
+        `Name ${JSON.stringify(name)} is taken by a non-view dataset.`,
+      );
+    }
+    const body = assertSelectOnly(sql);
+    await this.exec(`CREATE OR REPLACE VIEW ${quoteIdent(name)} AS ${body}`);
+    const countRows = await this.execObjects(
+      `SELECT count(*)::DOUBLE AS n FROM ${quoteIdent(name)}`,
+    );
+    const rowCount = Number(countRows[0]?.["n"] ?? 0);
+    const columns = await this.describeColumns(name);
+    const meta: DatasetMeta = {
+      name,
+      group: "views",
+      description: body.length > 160 ? `${body.slice(0, 159)}…` : body,
+      rowCount,
+      columns,
+    };
+    this.datasets.set(name, meta);
+    return meta;
+  }
+
+  /** Drop a view created via createView. Refuses names outside `view_*`. */
+  async dropView(name: string): Promise<void> {
+    this.validateName(name);
+    if (!name.startsWith(VIEW_NAME_PREFIX)) {
+      throw new Error(
+        `Only "${VIEW_NAME_PREFIX}"-namespaced views can be dropped (got ${JSON.stringify(name)}).`,
+      );
+    }
+    const existing = this.datasets.get(name);
+    if (existing && existing.group !== "views") {
+      throw new Error(`${JSON.stringify(name)} is not a view.`);
+    }
+    await this.exec(`DROP VIEW IF EXISTS ${quoteIdent(name)}`);
+    this.datasets.delete(name);
   }
 
   async profileColumn(dataset: string, column: string): Promise<ColumnProfile> {

@@ -2,8 +2,10 @@
 export interface DatasetMeta {
   /** SQL-addressable name, e.g. `invoices`. */
   name: string;
-  /** Logical group, e.g. `saas_billing` or `payments`. */
+  /** Logical group, e.g. `saas_billing`, `payments`, `uploads`, `views`. */
   group?: string;
+  /** Human-readable label, e.g. the original upload filename or view SQL. */
+  description?: string;
   rowCount: number;
   columns: ColumnMeta[];
 }
@@ -49,4 +51,10 @@ export interface DataSource {
   profileColumn(dataset: string, column: string): Promise<ColumnProfile>;
   /** Optional CSV/Parquet upload. */
   importFile?(file: File): Promise<DatasetMeta>;
+  /**
+   * Optional SQL views (PLAN-V2): name must be `view_*`-namespaced, body is
+   * guarded SELECT-only. The view shows up in listDatasets (group "views").
+   */
+  createView?(name: string, sql: string): Promise<DatasetMeta>;
+  dropView?(name: string): Promise<void>;
 }

@@ -19,5 +19,11 @@ export {
   shapeProfile,
   TOP_VALUES_LIMIT,
 } from "./profile";
-export { DuckDBDataSource, DEFAULT_MAX_ROWS } from "./duckdb";
+export {
+  DuckDBDataSource,
+  DEFAULT_MAX_ROWS,
+  VIEW_NAME_PREFIX,
+  dedupeDatasetName,
+  sanitizeDatasetName,
+} from "./duckdb";
 export type { DuckDBDataSourceOptions } from "./duckdb";
