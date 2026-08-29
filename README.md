@@ -60,7 +60,7 @@ No sign-up, no backend, no credentials — everything runs in the page.
 
 ## Tool catalog
 
-22 tools, registered from the page via `document.modelContext`
+35 tools, registered from the page via `document.modelContext`
 (feature-detecting `navigator.modelContext`). Full contracts:
 [docs/TOOLS.md](docs/TOOLS.md).
 
