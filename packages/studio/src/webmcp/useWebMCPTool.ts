@@ -16,7 +16,7 @@ export interface ModelContextLike {
       inputSchema?: object;
       execute: (
         input: unknown,
-        options: { signal: AbortSignal },
+        options?: { signal?: AbortSignal },
       ) => Promise<unknown>;
       annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
     },
@@ -62,6 +62,34 @@ export interface WebMCPToolConfig<S extends z.ZodType> {
  * - Errors inside execute are returned as `{error}` so the model gets
  *   actionable text instead of an opaque failed call.
  */
+/**
+ * Build the `execute` callback handed to `modelContext.registerTool`.
+ * Exported for tests. Contract hardening:
+ * - validates raw input against the (latest) zod schema, returns `{error}` on
+ *   invalid input instead of throwing;
+ * - tolerates hosts that invoke `execute(input)` WITHOUT an options object
+ *   (observed with manual `executeTool` invocation in Chrome 152); falls back
+ *   to the registration-lifetime signal so aborts still propagate;
+ * - converts thrown errors into `{error}` results the model can read.
+ */
+export function makeToolExecute(
+  getSchema: () => z.ZodType,
+  run: (input: unknown, signal: AbortSignal) => Promise<unknown> | unknown,
+  fallbackSignal: AbortSignal,
+): (rawInput: unknown, options?: { signal?: AbortSignal }) => Promise<unknown> {
+  return async (rawInput, options) => {
+    const parsed = getSchema().safeParse(rawInput);
+    if (!parsed.success) {
+      return { error: `Invalid input: ${parsed.error.message}` };
+    }
+    try {
+      return await run(parsed.data, options?.signal ?? fallbackSignal);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  };
+}
+
 export function useWebMCPTool<S extends z.ZodType>(
   config: WebMCPToolConfig<S>,
 ): void {
@@ -96,20 +124,11 @@ export function useWebMCPTool<S extends z.ZodType>(
           readOnlyHint?: boolean;
           untrustedContentHint?: boolean;
         },
-        execute: async (rawInput, _options) => {
-          const parsed = zodRef.current.safeParse(rawInput);
-          if (!parsed.success) {
-            return { error: `Invalid input: ${parsed.error.message}` };
-          }
-          try {
-            return await executeRef.current(
-              parsed.data as z.output<S>,
-              _options.signal,
-            );
-          } catch (err) {
-            return { error: err instanceof Error ? err.message : String(err) };
-          }
-        },
+        execute: makeToolExecute(
+          () => zodRef.current,
+          (input, signal) => executeRef.current(input as z.output<S>, signal),
+          controller.signal,
+        ),
       },
       { signal: controller.signal },
     ).catch((err: unknown) => {
