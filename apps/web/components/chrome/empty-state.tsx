@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import {
   CursorClick,
+  Layout,
   Robot,
   Sparkle,
   UploadSimple,
@@ -10,6 +11,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useDataSource } from "@/lib/datasource";
+import { useUiState } from "@/lib/ui-state";
 
 const SUGGESTED_PROMPTS = [
   "Profile my data and build a revenue dashboard.",
@@ -20,6 +22,7 @@ const SUGGESTED_PROMPTS = [
 
 export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
   const { importFiles, status } = useDataSource();
+  const setTemplatesOpen = useUiState((s) => s.setTemplatesOpen);
   const fileRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -51,6 +54,15 @@ export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
           >
             <Sparkle weight="fill" className="size-4" />
             {status === "ready" ? "Load demo dashboard" : "Loading demo data…"}
+          </Button>
+          <Button
+            variant="outline"
+            data-testid="browse-templates"
+            disabled={status !== "ready"}
+            onClick={() => setTemplatesOpen(true)}
+          >
+            <Layout className="size-4" />
+            Templates
           </Button>
           <Button
             variant="outline"

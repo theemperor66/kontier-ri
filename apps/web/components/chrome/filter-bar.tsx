@@ -1,6 +1,12 @@
 "use client";
 
-import { CalendarBlank, FunnelSimple, Scan, X } from "@phosphor-icons/react";
+import {
+  CalendarBlank,
+  CursorClick,
+  FunnelSimple,
+  Scan,
+  X,
+} from "@phosphor-icons/react";
 import { useDashboardStore, type GlobalFilter } from "@/lib/dashboard-store";
 import { Button } from "@/components/ui/button";
 
@@ -14,6 +20,12 @@ function filterText(f: GlobalFilter): string {
 export function FilterBar() {
   const filters = useDashboardStore((s) => s.doc.filters.filters);
   const dateRange = useDashboardStore((s) => s.doc.filters.dateRange);
+  const crossFilter = useDashboardStore((s) => s.doc.crossFilter);
+  const clearCrossFilter = useDashboardStore((s) => s.clearCrossFilter);
+  const sourceTileTitle = useDashboardStore((s) => {
+    const id = s.doc.crossFilter?.sourceTileId;
+    return id ? s.doc.tiles.find((t) => t.id === id)?.title : undefined;
+  });
   const brushed = useDashboardStore((s) => s.brushedRange);
   const setFilters = useDashboardStore((s) => s.setFilter);
   const clearFilters = useDashboardStore((s) => s.clearFilters);
@@ -31,7 +43,9 @@ export function FilterBar() {
     }
   };
 
-  if (filters.length === 0 && !dateRange && !brushed) return null;
+  if (filters.length === 0 && !dateRange && !brushed && !crossFilter) {
+    return null;
+  }
 
   return (
     <div
@@ -54,6 +68,32 @@ export function FilterBar() {
           </button>
         </span>
       ))}
+      {crossFilter ? (
+        <span
+          data-testid="cross-filter-chip"
+          className="inline-flex items-center gap-1.5 rounded-full border border-agent/30 bg-agent/10 py-1 pl-2.5 pr-1 text-xs text-agent"
+        >
+          <CursorClick className="size-3" />
+          <span className="font-medium">
+            {crossFilter.column} = {String(crossFilter.value)}
+          </span>
+          {sourceTileTitle ? (
+            <span className="hidden text-agent/70 sm:inline">
+              · from “{sourceTileTitle}”
+            </span>
+          ) : null}
+          <button
+            aria-label="Clear cross-filter"
+            data-testid="clear-cross-filter"
+            className="flex size-4 cursor-pointer items-center justify-center rounded-full hover:bg-agent/20"
+            onClick={() =>
+              clearCrossFilter({ origin: "human", label: "Cleared cross-filter" })
+            }
+          >
+            <X className="size-2.5" />
+          </button>
+        </span>
+      ) : null}
       {dateRange ? (
         <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card py-1 pl-2.5 pr-1 text-xs">
           <CalendarBlank className="size-3 text-muted-foreground" />

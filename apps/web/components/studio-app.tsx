@@ -10,8 +10,11 @@ import { buildDemoDoc } from "@/lib/demo";
 import { GridCanvas } from "@/components/canvas/grid-canvas";
 import { TopBar } from "@/components/chrome/top-bar";
 import { FilterBar } from "@/components/chrome/filter-bar";
+import { PageTabs } from "@/components/chrome/page-tabs";
 import { ActivityFeed } from "@/components/chrome/activity-feed";
 import { EmptyState } from "@/components/chrome/empty-state";
+import { ShellExtras } from "@/components/chrome/shell-extras";
+import { useUiState } from "@/lib/ui-state";
 import { cn } from "@/lib/utils";
 
 /** Sync doc.theme.mode (store, agent-controllable) -> next-themes class. */
@@ -69,6 +72,7 @@ function CanvasArea() {
   }
   return (
     <div
+      data-canvas-root
       className="px-4 py-4"
       onPointerDown={(e) => {
         // Clicking canvas background clears the selection.
@@ -83,6 +87,8 @@ function CanvasArea() {
 export function StudioApp() {
   const [activityOpen, setActivityOpen] = useState(false);
   const resolvedTheme = useDashboardStore((s) => s.doc.theme.mode);
+  // Presentation mode (F): chrome hidden, tiles full-bleed.
+  const presentation = useUiState((s) => s.presentation);
 
   return (
     <DataProvider>
@@ -93,21 +99,27 @@ export function StudioApp() {
       <ThemeSync />
       <Hotkeys />
       <div className="flex min-h-dvh flex-col">
-        <TopBar
-          activityOpen={activityOpen}
-          onToggleActivity={() => setActivityOpen((v) => !v)}
-        />
-        <FilterBar />
+        {!presentation ? (
+          <TopBar
+            activityOpen={activityOpen}
+            onToggleActivity={() => setActivityOpen((v) => !v)}
+          />
+        ) : null}
+        {!presentation ? <PageTabs /> : null}
+        {!presentation ? <FilterBar /> : null}
         <main
           className={cn(
             "min-h-0 flex-1 transition-[padding] duration-300",
-            activityOpen && "lg:pr-80",
+            !presentation && activityOpen && "lg:pr-80",
           )}
         >
           <CanvasArea />
         </main>
-        <ActivityFeed open={activityOpen} onClose={() => setActivityOpen(false)} />
+        {!presentation ? (
+          <ActivityFeed open={activityOpen} onClose={() => setActivityOpen(false)} />
+        ) : null}
       </div>
+      <ShellExtras />
       <Toaster
         position="bottom-right"
         theme={resolvedTheme}

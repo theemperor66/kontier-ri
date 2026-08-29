@@ -5,7 +5,11 @@ import {
   ArrowCounterClockwise,
   ArrowClockwise,
   ClockCounterClockwise,
+  LinkSimple,
+  MagnifyingGlass,
   Moon,
+  Play,
+  SquaresFour,
   Sun,
   UploadSimple,
 } from "@phosphor-icons/react";
@@ -16,6 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { WebMCPStatus } from "./webmcp-status";
 import { KontierWordmark } from "./kontier-wordmark";
+import { useUiState } from "@/lib/ui-state";
+import { buildShareURL } from "@/lib/share-url";
 import { cn } from "@/lib/utils";
 
 export function TopBar({
@@ -35,6 +41,9 @@ export function TopBar({
   const canRedo = useDashboardStore((s) => s.redoStack.length > 0);
   const activityCount = useDashboardStore((s) => s.activityLog.length);
   const { importFiles, status, statusDetail } = useDataSource();
+  const setPaletteOpen = useUiState((s) => s.setPaletteOpen);
+  const setManagerOpen = useUiState((s) => s.setManagerOpen);
+  const setPresentation = useUiState((s) => s.setPresentation);
   const fileRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState(title);
 
@@ -97,6 +106,57 @@ export function TopBar({
 
         <div className="ml-auto flex items-center gap-1.5">
           <WebMCPStatus />
+          <div className="mx-1 h-5 w-px bg-border" />
+          <Tooltip content="Command palette (⌘K)">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Command palette"
+              data-testid="open-palette"
+              onClick={() => setPaletteOpen(true)}
+            >
+              <MagnifyingGlass className="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Dashboards — create, switch, import/export">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Manage dashboards"
+              data-testid="open-manager"
+              onClick={() => setManagerOpen(true)}
+            >
+              <SquaresFour className="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Copy share link — dashboard travels in the URL">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Copy share link"
+              data-testid="copy-share-link"
+              onClick={() => {
+                const doc = useDashboardStore.getState().doc;
+                void navigator.clipboard
+                  .writeText(buildShareURL(doc))
+                  .then(() => toast.success("Share link copied."))
+                  .catch(() => toast.error("Could not access the clipboard."));
+              }}
+            >
+              <LinkSimple className="size-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Presentation mode (F)">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Presentation mode"
+              data-testid="enter-presentation"
+              onClick={() => setPresentation(true)}
+            >
+              <Play className="size-4" />
+            </Button>
+          </Tooltip>
           <div className="mx-1 h-5 w-px bg-border" />
           <Tooltip content="Undo (⌘Z)">
             <Button
