@@ -69,9 +69,19 @@ guard. Monorepo: `packages/datasource` (DataSource interface + DuckDB-WASM),
 - [ ] No credentials needed (public app)
 
 ## Pre-submit hardening
-- [ ] Self-host duckdb-wasm bundles (drop jsDelivr runtime dep)
+- [x] Self-host duckdb-wasm bundles (drop jsDelivr runtime dep) — copied to
+      public/duckdb/ at build time, same-origin with CDN fallback; e2e asserts
+      zero jsDelivr requests
 - [ ] R1 verified: dynamic tool mount/unmount in ChatGPT browser (fallback ready)
-- [ ] Fresh-profile end-to-end test of the live URL (cold cache)
-- [ ] README: hero GIF, quickstart, tool table, architecture, Kontier story
-- [ ] OG meta tags + favicon (judges share links)
+- [x] Fresh-profile end-to-end test of the live URL (cold cache) — verified via
+      scripts/verify-live.mjs against https://theemperor66.github.io/kontier-ri/
+      (DuckDB boots, 8 demo tiles render, no CDN requests)
+- [x] README: hero shots, quickstart, tool table, architecture, Kontier story
+- [x] OG meta tags + favicon (judges share links) — og.png 1200x630 rendered
+      from the live demo; twitter summary_large_image; chart-glyph icon.svg
 - [ ] Suggested agent prompts in the empty state (guide judges to the wow path)
+
+## Fallback live URL (while Vercel auth is pending)
+GitHub Pages: https://theemperor66.github.io/kontier-ri/ — deployed on every
+push to main via .github/workflows/deploy.yml (static export, basePath
+/kontier-ri). Root-path deploys (Vercel) need no env changes.
