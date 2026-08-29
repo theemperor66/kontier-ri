@@ -5,7 +5,7 @@
  */
 
 import type { ColumnMeta, DatasetMeta } from "@kontier-ri/datasource";
-import { aggExpr, measureAlias } from "@kontier-ri/studio";
+import { measureAlias, plottableAggExpr } from "@kontier-ri/studio";
 import type {
   ChartSpec,
   DateRange,
@@ -148,17 +148,14 @@ export function buildChartQuery(
     };
   }
   const q = spec.query;
-  const CAST_AGGS = ["sum", "avg", "count", "count_distinct"];
   const selectParts = [
     ...q.dims.map(quoteIdent),
-    ...q.measures.map((m) => {
-      const expr = aggExpr(m.agg, m.col);
-      // sum/avg/count on BIGINT/DECIMAL yield HUGEINT/DECIMAL, which do not
-      // survive as plain JS numbers — cast to DOUBLE for charting.
-      const cast = CAST_AGGS.includes(m.agg) ? `CAST(${expr} AS DOUBLE)` : expr;
-      // Alias matches @kontier-ri/studio measureAlias -> stable seriesKeys.
-      return `${cast} AS ${quoteIdent(measureAlias(m))}`;
-    }),
+    // plottableAggExpr CASTs widening aggregates (sum/avg/count) to DOUBLE so
+    // HUGEINT/DECIMAL results survive as plain JS numbers for charting.
+    // Alias matches @kontier-ri/studio measureAlias -> stable seriesKeys.
+    ...q.measures.map(
+      (m) => `${plottableAggExpr(m.agg, m.col)} AS ${quoteIdent(measureAlias(m))}`,
+    ),
   ];
   const clauses = meta
     ? buildWhereClauses(meta.columns, filters, dateRange)
@@ -204,18 +201,12 @@ export function buildKpiQuery(
         ? `strftime(CAST(${quoteIdent(dateCol.name)} AS DATE), '%Y-%m')`
         : `substr(CAST(${quoteIdent(dateCol.name)} AS VARCHAR), 1, 7)`;
       const where = whereSQL(clauses);
-      const baseExpr = aggExpr(agg, spec.measure ?? "*");
-      const valueExpr = ["sum", "avg", "count", "count_distinct"].includes(agg)
-        ? `CAST(${baseExpr} AS DOUBLE)`
-        : baseExpr;
+      const valueExpr = plottableAggExpr(agg, spec.measure ?? "*");
       const sql = `WITH per_month AS (SELECT ${monthExpr} AS __m, ${valueExpr} AS __v FROM ${base}${where} GROUP BY 1), ranked AS (SELECT __m, __v, row_number() OVER (ORDER BY __m DESC) AS __rn FROM per_month) SELECT max(CASE WHEN __rn = 1 THEN __v END) AS value, max(CASE WHEN __rn = 2 THEN __v END) AS prev FROM ranked`;
       return { sql };
     }
   }
-  const baseExpr = aggExpr(agg, spec.measure ?? "*");
-  const valueExpr = ["sum", "avg", "count", "count_distinct"].includes(agg)
-    ? `CAST(${baseExpr} AS DOUBLE)`
-    : baseExpr;
+  const valueExpr = plottableAggExpr(agg, spec.measure ?? "*");
   return {
     sql: `SELECT ${valueExpr} AS value FROM ${base}${whereSQL(clauses)}`,
   };

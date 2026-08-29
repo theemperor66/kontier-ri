@@ -22,6 +22,7 @@ export {
   buildChartSQL,
   buildTileQuerySQL,
   measureAlias,
+  plottableAggExpr,
   summarizeSpec,
 } from "./tile-sql";
 

@@ -15,6 +15,19 @@ export function aggExpr(agg: Agg, col: string): string {
   return `${agg}(${quoteIdent(col)})`;
 }
 
+/**
+ * Aggregates whose DuckDB result type widens beyond a plain JS number:
+ * sum/avg on BIGINT/DECIMAL yield HUGEINT/DECIMAL128 and count yields BIGINT,
+ * which Arrow surfaces as BigInt/struct objects that charts cannot plot.
+ */
+const WIDENING_AGGS: readonly Agg[] = ["sum", "avg", "count", "count_distinct"];
+
+/** aggExpr, CAST to DOUBLE when the aggregate widens (safe to plot/format). */
+export function plottableAggExpr(agg: Agg, col: string): string {
+  const expr = aggExpr(agg, col);
+  return WIDENING_AGGS.includes(agg) ? `CAST(${expr} AS DOUBLE)` : expr;
+}
+
 /** Stable result-column alias for a chart measure (use as seriesKey). */
 export function measureAlias(m: ChartMeasure): string {
   return m.agg === "count" && m.col === "*" ? "count" : `${m.agg}_${m.col}`;
@@ -25,7 +38,7 @@ export function buildChartSQL(spec: ChartSpec): string {
   const q = spec.query;
   const dims = q.dims.map((d) => quoteIdent(d)).join(", ");
   const measures = q.measures
-    .map((m) => `${aggExpr(m.agg, m.col)} AS ${quoteIdent(measureAlias(m))}`)
+    .map((m) => `${plottableAggExpr(m.agg, m.col)} AS ${quoteIdent(measureAlias(m))}`)
     .join(", ");
   const orderBy = q.orderBy ?? quoteIdent(q.dims[0]!);
   const limit = q.limit ?? 1000;
@@ -51,7 +64,7 @@ export function buildTileQuerySQL(tile: Tile): string | null {
       const s = tile.spec as KpiSpec;
       if (s.sql) return s.sql;
       if (s.measure && s.agg) {
-        return `SELECT ${aggExpr(s.agg, s.measure)} AS value FROM ${quoteIdent(s.dataset)}`;
+        return `SELECT ${plottableAggExpr(s.agg, s.measure)} AS value FROM ${quoteIdent(s.dataset)}`;
       }
       return null;
     }
