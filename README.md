@@ -18,7 +18,7 @@ chart editors. Agents guessing their way through that UI fail; a headless API
 loses the human. WebMCP is the architecture where the agent operates the *same
 live document* the human is looking at:
 
-- **The agent has hands.** 19 static + 3 selection-scoped WebMCP tools:
+- **The agent has hands.** 32 static + 3 selection-scoped WebMCP tools:
   query datasets, add/edit/move tiles, set filters, annotate charts.
 - **The human stays in control.** Every agent edit is attributed (tiles glow,
   activity feed), undoable (Cmd+Z works on agent commands), and guarded by a
