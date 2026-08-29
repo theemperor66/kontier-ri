@@ -3,10 +3,10 @@
 import { TrendDown, TrendUp } from "@phosphor-icons/react";
 import type { KpiSpec, Tile } from "@/lib/dashboard-store";
 import { useTileData } from "@/lib/use-tile-data";
-import { formatDelta, formatValue } from "@/lib/format";
-import { Skeleton } from "@/components/ui/skeleton";
+import { formatDelta, formatValue, resolveRuleColor } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { TileError } from "./tile-error";
+import { TileShimmer } from "./tile-shimmer";
 
 function firstNumber(v: unknown): number | null {
   const n =
@@ -19,14 +19,7 @@ export function KpiTile({ tile }: { tile: Tile }) {
   const { loading, error, result } = useTileData(tile);
 
   if (error) return <TileError message={error} />;
-  if (loading || !result) {
-    return (
-      <div className="flex h-full flex-col justify-center gap-2 px-1">
-        <Skeleton className="h-9 w-32" />
-        <Skeleton className="h-4 w-20" />
-      </div>
-    );
-  }
+  if (loading || !result) return <TileShimmer kind="kpi" />;
 
   const row = result.rows[0] ?? [];
   const nameIdx = (n: string) =>
@@ -38,9 +31,15 @@ export function KpiTile({ tile }: { tile: Tile }) {
     prevIdx >= 0 ? firstNumber(row[prevIdx]) : firstNumber(row[valueIdx + 1]);
   const delta = spec.compare || prevIdx >= 0 ? formatDelta(value, prev) : null;
 
+  // Conditional formatting: first matching rule colors the value.
+  const ruleColor = resolveRuleColor(value, spec.rules);
+
   return (
     <div className="flex h-full flex-col justify-center px-1">
-      <div className="text-3xl font-semibold leading-tight tracking-tight tabular-nums">
+      <div
+        className="text-3xl font-semibold leading-tight tracking-tight tabular-nums"
+        style={ruleColor ? { color: ruleColor } : undefined}
+      >
         {formatValue(value, spec.format)}
       </div>
       {delta ? (

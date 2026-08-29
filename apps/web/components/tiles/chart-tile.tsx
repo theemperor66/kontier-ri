@@ -3,14 +3,13 @@
 import { useEffect, useMemo, useRef } from "react";
 import {
   Area,
-  AreaChart,
   Bar,
-  BarChart,
   Brush,
   CartesianGrid,
   Cell,
+  ComposedChart,
+  Legend,
   Line,
-  LineChart,
   Pie,
   PieChart,
   ReferenceLine,
@@ -22,17 +21,28 @@ import {
 import type { ChartSpec, Tile } from "@/lib/dashboard-store";
 import { useDashboardStore } from "@/lib/dashboard-store";
 import { useTileData } from "@/lib/use-tile-data";
-import { formatCompact } from "@/lib/format";
-import { Skeleton } from "@/components/ui/skeleton";
+import { resolveRuleColor } from "@/lib/format";
 import { TileError } from "./tile-error";
-
-const PALETTE = [
-  "var(--chart-1)",
-  "var(--chart-2)",
-  "var(--chart-3)",
-  "var(--chart-4)",
-  "var(--chart-5)",
-];
+import { TileShimmer } from "./tile-shimmer";
+import {
+  axisTickFormatter,
+  CHART_PALETTE,
+  markOpacity,
+  tooltipValueFormatter,
+  TOOLTIP_STYLE,
+  TREND_KEY,
+  useCrossFilterEmit,
+  useHiddenSeries,
+} from "@/components/canvas/charts/common";
+import { withTrend } from "@/components/canvas/charts/regression";
+import { ScatterChartView } from "@/components/canvas/charts/scatter-chart";
+import { ComboChartView } from "@/components/canvas/charts/combo-chart";
+import { DonutChartView } from "@/components/canvas/charts/donut-chart";
+import { HBarChartView } from "@/components/canvas/charts/hbar-chart";
+import { Stacked100ChartView } from "@/components/canvas/charts/stacked100-chart";
+import { FunnelChartView } from "@/components/canvas/charts/funnel-chart";
+import { RadarChartView } from "@/components/canvas/charts/radar-chart";
+import { HeatmapChartView } from "@/components/canvas/charts/heatmap-chart";
 
 /** Coerce DB values into something recharts can plot. */
 function toPlottable(v: unknown): unknown {
@@ -57,7 +67,9 @@ export function ChartTile({ tile }: { tile: Tile }) {
   const spec = tile.spec as ChartSpec;
   const { loading, error, result } = useTileData(tile);
   const setBrushedRange = useDashboardStore((s) => s.setBrushedRange);
+  const { crossFilter, emit: handleItemClick } = useCrossFilterEmit(tile.id);
   const brushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { hidden, toggle } = useHiddenSeries();
 
   const { data, xKey, seriesKeys } = useMemo(() => {
     if (!result || result.columns.length === 0) {
@@ -72,6 +84,7 @@ export function ChartTile({ tile }: { tile: Tile }) {
       .filter(
         (c) =>
           c.name !== x &&
+          c.name !== spec.yKey &&
           (isNumericType(c.type) ||
             result.rows.some((r) => typeof r[cols.indexOf(c)] === "number")),
       )
@@ -79,7 +92,11 @@ export function ChartTile({ tile }: { tile: Tile }) {
     const series =
       spec.seriesKeys && spec.seriesKeys.length > 0
         ? spec.seriesKeys.filter((k) => cols.some((c) => c.name === k))
-        : numeric;
+        : spec.chartType === "scatter" &&
+            spec.yKey &&
+            cols.some((c) => c.name === spec.yKey)
+          ? [spec.yKey]
+          : numeric;
     const rows = result.rows.map((r) => {
       const obj: Record<string, unknown> = {};
       cols.forEach((c, i) => {
@@ -88,7 +105,11 @@ export function ChartTile({ tile }: { tile: Tile }) {
       return obj;
     });
     return { data: rows, xKey: x, seriesKeys: series };
-  }, [result, spec.xKey, spec.seriesKeys]);
+  }, [result, spec.xKey, spec.seriesKeys, spec.yKey, spec.chartType]);
+
+  // Highlight marks matching the active cross-filter on this tile's x column.
+  const activeValue =
+    crossFilter && crossFilter.column === xKey ? crossFilter.value : undefined;
 
   // Flush pending brush updates on unmount.
   useEffect(
@@ -99,7 +120,7 @@ export function ChartTile({ tile }: { tile: Tile }) {
   );
 
   if (error) return <TileError message={error} />;
-  if (loading || !result) return <Skeleton className="h-full w-full" />;
+  if (loading || !result) return <TileShimmer kind="chart" />;
   if (data.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
@@ -109,12 +130,22 @@ export function ChartTile({ tile }: { tile: Tile }) {
   }
 
   const colorFor = (i: number) =>
-    i === 0 && spec.color ? spec.color : PALETTE[i % PALETTE.length];
+    i === 0 && spec.color ? spec.color : CHART_PALETTE[i % CHART_PALETTE.length]!;
+
+  const valueFormat = spec.format?.value;
+  const y2Format = spec.format?.y2;
+  const rules = spec.format?.rules;
+  const analytics = spec.analytics;
+  const trend = analytics?.trendline === true;
+  const refLine = analytics?.referenceLine;
 
   const temporal =
     typeof data[0]?.[xKey] === "string" &&
     /^\d{4}-\d{2}/.test(String(data[0][xKey]));
-  const showBrush = spec.chartType !== "pie" && temporal && data.length > 8;
+  const showBrush =
+    ["line", "bar", "area"].includes(spec.chartType) &&
+    temporal &&
+    data.length > 8;
 
   const handleBrush = (range: { startIndex?: number; endIndex?: number }) => {
     if (brushTimer.current) clearTimeout(brushTimer.current);
@@ -133,16 +164,134 @@ export function ChartTile({ tile }: { tile: Tile }) {
     }, 250);
   };
 
-  const tooltipStyle = {
-    backgroundColor: "var(--popover)",
-    border: "1px solid var(--border)",
-    borderRadius: 8,
-    fontSize: 12,
-    color: "var(--popover-foreground)",
-  } as const;
-
   const annotations = (tile.annotations ?? []).filter((a) => a.anchor?.x != null);
+  const annotationLines = annotations.map((a, i) => (
+    <ReferenceLine
+      key={`ann-${i}`}
+      x={a.anchor?.x as string | number}
+      stroke="var(--chart-4)"
+      strokeDasharray="4 3"
+      label={{
+        value: a.text.length > 24 ? `${a.text.slice(0, 24)}…` : a.text,
+        position: "insideTopRight",
+        fill: "var(--muted-foreground)",
+        fontSize: 10,
+      }}
+    />
+  ));
+  const referenceLineEl = refLine ? (
+    <ReferenceLine
+      key="spec-ref"
+      {...(spec.chartType === "hbar" ? { x: refLine.value } : { y: refLine.value })}
+      stroke={refLine.color ?? "var(--chart-4)"}
+      strokeDasharray="6 4"
+      strokeWidth={1.5}
+      ifOverflow="extendDomain"
+      label={
+        refLine.label
+          ? {
+              value: refLine.label,
+              position: "insideBottomRight",
+              fill: "var(--muted-foreground)",
+              fontSize: 10,
+            }
+          : undefined
+      }
+    />
+  ) : null;
+  const legendEl = spec.legend ? (
+    <Legend
+      onClick={(entry: { dataKey?: unknown; value?: unknown }) =>
+        toggle(typeof entry.dataKey === "string" ? entry.dataKey : entry.value)
+      }
+      wrapperStyle={{ fontSize: 11, cursor: "pointer" }}
+      iconSize={8}
+    />
+  ) : null;
 
+  // ---- New v2 chart types (renderers in components/canvas/charts) ----
+  const baseProps = {
+    data,
+    xKey,
+    seriesKeys,
+    colorFor,
+    valueFormat,
+    onItemClick: handleItemClick,
+    activeValue,
+    hiddenKeys: hidden,
+  };
+
+  switch (spec.chartType) {
+    case "scatter":
+      return (
+        <ScatterChartView {...baseProps} trend={trend}>
+          {referenceLineEl}
+          {legendEl}
+        </ScatterChartView>
+      );
+    case "combo": {
+      const comboData = trend && seriesKeys[0] ? withTrend(data, seriesKeys[0], TREND_KEY) : data;
+      return (
+        <ComboChartView
+          {...baseProps}
+          data={comboData}
+          series={spec.series}
+          y2Format={y2Format}
+        >
+          {trend ? (
+            <Line
+              yAxisId="left"
+              dataKey={TREND_KEY}
+              stroke="var(--muted-foreground)"
+              strokeDasharray="6 4"
+              strokeWidth={1.5}
+              dot={false}
+              activeDot={false}
+              legendType="none"
+              tooltipType="none"
+              isAnimationActive={false}
+            />
+          ) : null}
+          {referenceLineEl}
+          {legendEl}
+        </ComboChartView>
+      );
+    }
+    case "donut":
+      return <DonutChartView {...baseProps} />;
+    case "hbar":
+      return (
+        <HBarChartView
+          {...baseProps}
+          stacked={spec.stacked}
+          ruleColorFor={(v) => resolveRuleColor(v, rules)}
+        >
+          {referenceLineEl}
+          {legendEl}
+        </HBarChartView>
+      );
+    case "stacked100":
+      return (
+        <Stacked100ChartView {...baseProps}>{legendEl}</Stacked100ChartView>
+      );
+    case "funnel":
+      return <FunnelChartView {...baseProps} />;
+    case "radar":
+      return <RadarChartView {...baseProps}>{legendEl}</RadarChartView>;
+    case "heatmap": {
+      const yKey =
+        spec.yKey && data.some((r) => spec.yKey! in r)
+          ? spec.yKey
+          : (result.columns.find(
+              (c) => c.name !== xKey && !seriesKeys.includes(c.name),
+            )?.name ?? xKey);
+      return <HeatmapChartView {...baseProps} yKey={yKey} />;
+    }
+    default:
+      break;
+  }
+
+  // ---- v1 chart types (line / bar / area / pie) ----
   if (spec.chartType === "pie") {
     const valueKey = seriesKeys[0];
     if (!valueKey) return <TileError message="Pie chart needs a numeric column." />;
@@ -157,19 +306,33 @@ export function ChartTile({ tile }: { tile: Tile }) {
             outerRadius="85%"
             paddingAngle={2}
             stroke="var(--card)"
+            className="cursor-pointer"
+            onClick={(entry: { payload?: Record<string, unknown> }) => {
+              const v = entry?.payload?.[xKey];
+              if (v != null) handleItemClick({ column: xKey, value: v });
+            }}
           >
-            {data.map((_, i) => (
-              <Cell key={i} fill={PALETTE[i % PALETTE.length]} />
+            {data.map((row, i) => (
+              <Cell
+                key={i}
+                fill={colorFor(i)}
+                opacity={markOpacity(activeValue, row[xKey])}
+              />
             ))}
           </Pie>
-          <RechartsTooltip contentStyle={tooltipStyle} />
+          <RechartsTooltip
+            contentStyle={TOOLTIP_STYLE}
+            formatter={tooltipValueFormatter(valueFormat)}
+          />
         </PieChart>
       </ResponsiveContainer>
     );
   }
 
+  const plotted =
+    trend && seriesKeys[0] ? withTrend(data, seriesKeys[0], TREND_KEY) : data;
   const common = {
-    data,
+    data: plotted,
     margin: { top: 8, right: 8, bottom: 0, left: 0 },
   };
   const axes = (
@@ -180,9 +343,13 @@ export function ChartTile({ tile }: { tile: Tile }) {
         tickLine={false}
         axisLine={false}
         width={44}
-        tickFormatter={(v: number) => formatCompact(v)}
+        tickFormatter={axisTickFormatter(valueFormat)}
       />
-      <RechartsTooltip contentStyle={tooltipStyle} cursor={{ opacity: 0.2 }} />
+      <RechartsTooltip
+        contentStyle={TOOLTIP_STYLE}
+        cursor={{ opacity: 0.2 }}
+        formatter={tooltipValueFormatter(valueFormat)}
+      />
     </>
   );
   const brush = showBrush ? (
@@ -193,85 +360,104 @@ export function ChartTile({ tile }: { tile: Tile }) {
       onChange={handleBrush}
     />
   ) : null;
-  const refLines = annotations.map((a, i) => (
-    <ReferenceLine
-      key={`ann-${i}`}
-      x={a.anchor?.x as string | number}
-      stroke="var(--chart-4)"
-      strokeDasharray="4 3"
-      label={{
-        value: a.text.length > 24 ? `${a.text.slice(0, 24)}…` : a.text,
-        position: "insideTopRight",
-        fill: "var(--muted-foreground)",
-        fontSize: 10,
-      }}
+  const trendLine = trend ? (
+    <Line
+      key={TREND_KEY}
+      dataKey={TREND_KEY}
+      stroke="var(--muted-foreground)"
+      strokeDasharray="6 4"
+      strokeWidth={1.5}
+      dot={false}
+      activeDot={false}
+      legendType="none"
+      tooltipType="none"
+      isAnimationActive={false}
     />
-  ));
+  ) : null;
 
-  if (spec.chartType === "line") {
-    return (
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart {...common}>
-          {axes}
-          {refLines}
-          {seriesKeys.map((k, i) => (
-            <Line
-              key={k}
-              type="monotone"
-              dataKey={k}
-              stroke={colorFor(i)}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 3 }}
-            />
-          ))}
-          {brush}
-        </LineChart>
-      </ResponsiveContainer>
-    );
-  }
-
-  if (spec.chartType === "area") {
-    return (
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart {...common}>
-          {axes}
-          {refLines}
-          {seriesKeys.map((k, i) => (
-            <Area
-              key={k}
-              type="monotone"
-              dataKey={k}
-              stackId={spec.stacked ? "stack" : undefined}
-              stroke={colorFor(i)}
-              fill={colorFor(i)}
-              fillOpacity={0.18}
-              strokeWidth={2}
-            />
-          ))}
-          {brush}
-        </AreaChart>
-      </ResponsiveContainer>
-    );
-  }
+  // Single ComposedChart for line/area/bar so the dashed trendline (a Line)
+  // renders in every cartesian chart type.
+  const cartesianClick =
+    spec.chartType === "line" || spec.chartType === "area"
+      ? (state: { activeLabel?: unknown }) => {
+          if (state?.activeLabel != null) {
+            handleItemClick({ column: xKey, value: state.activeLabel });
+          }
+        }
+      : undefined;
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart {...common}>
+      <ComposedChart
+        {...common}
+        onClick={cartesianClick}
+        className={cartesianClick ? "cursor-pointer" : undefined}
+      >
         {axes}
-        {refLines}
-        {seriesKeys.map((k, i) => (
-          <Bar
-            key={k}
-            dataKey={k}
-            stackId={spec.stacked ? "stack" : undefined}
-            fill={colorFor(i)}
-            radius={spec.stacked ? [0, 0, 0, 0] : [3, 3, 0, 0]}
-            maxBarSize={40}
-          />
-        ))}
+        {annotationLines}
+        {referenceLineEl}
+        {legendEl}
+        {spec.chartType === "line"
+          ? seriesKeys.map((k, i) => (
+              <Line
+                key={k}
+                type="monotone"
+                dataKey={k}
+                stroke={colorFor(i)}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 3 }}
+                hide={hidden.has(k)}
+              />
+            ))
+          : spec.chartType === "area"
+            ? seriesKeys.map((k, i) => (
+                <Area
+                  key={k}
+                  type="monotone"
+                  dataKey={k}
+                  stackId={spec.stacked ? "stack" : undefined}
+                  stroke={colorFor(i)}
+                  fill={colorFor(i)}
+                  fillOpacity={0.18}
+                  strokeWidth={2}
+                  hide={hidden.has(k)}
+                />
+              ))
+            : seriesKeys.map((k, i) => (
+                <Bar
+                  key={k}
+                  dataKey={k}
+                  stackId={spec.stacked ? "stack" : undefined}
+                  fill={colorFor(i)}
+                  radius={spec.stacked ? [0, 0, 0, 0] : [3, 3, 0, 0]}
+                  maxBarSize={40}
+                  hide={hidden.has(k)}
+                  className="cursor-pointer"
+                  onClick={(entry: { payload?: Record<string, unknown> }) => {
+                    const v = entry?.payload?.[xKey];
+                    if (v != null) handleItemClick({ column: xKey, value: v });
+                  }}
+                >
+                  {plotted.map((row, j) => {
+                    const raw = row[k];
+                    const ruleColor =
+                      i === 0 && rules && typeof raw === "number"
+                        ? resolveRuleColor(raw, rules)
+                        : null;
+                    return (
+                      <Cell
+                        key={j}
+                        fill={ruleColor ?? colorFor(i)}
+                        opacity={markOpacity(activeValue, row[xKey])}
+                      />
+                    );
+                  })}
+                </Bar>
+              ))}
+        {trendLine}
         {brush}
-      </BarChart>
+      </ComposedChart>
     </ResponsiveContainer>
   );
 }
