@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kontier RI — WebMCP spike</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:#0b0e14; color:#d6deeb; max-width:720px; margin:3rem auto; padding:0 1rem; line-height:1.5; }
+  h1 { font-size:1.2rem; }
+  .badge { display:inline-block; padding:.15rem .55rem; border-radius:999px; font-size:.8rem; margin-left:.4rem; }
+  .ok   { background:#123d24; color:#4ade80; border:1px solid #4ade80; }
+  .bad  { background:#3d1212; color:#f87171; border:1px solid #f87171; }
+  .warn { background:#3d2f12; color:#fbbf24; border:1px solid #fbbf24; }
+  #counter { font-size:3rem; margin:.5rem 0; }
+  #log { background:#11151f; border:1px solid #232a3a; border-radius:8px; padding:.75rem 1rem; min-height:8rem; white-space:pre-wrap; font-size:.8rem; }
+  button { background:#1c2434; color:#d6deeb; border:1px solid #2e3a52; border-radius:6px; padding:.4rem .9rem; cursor:pointer; }
+  button:hover { background:#26314a; }
+  small { color:#7a869c; }
+</style>
+</head>
+<body>
+<h1>Kontier RI &mdash; WebMCP spike</h1>
+<p>
+  API entry point: <span id="api-status" class="badge warn">checking&hellip;</span><br/>
+  Tools registered: <span id="reg-status" class="badge warn">pending&hellip;</span><br/>
+  getTools() sees: <span id="tools-status" class="badge warn">pending&hellip;</span>
+</p>
+
+<p>Counter (mutated by the <code>increment_counter</code> tool):</p>
+<div id="counter">0</div>
+<button id="manual-inc">+1 (human)</button>
+
+<h2 style="font-size:1rem">Log</h2>
+<div id="log"></div>
+
+<p><small>
+  Chrome 149+: enable <code>chrome://flags/#enable-webmcp-testing</code> and relaunch
+  (CLI: <code>--enable-features=WebMCP</code>). Serve via any static server, e.g.
+  <code>python3 -m http.server 8123</code>, then open <code>http://localhost:8123/</code>.
+  Tools: <code>echo</code>, <code>increment_counter</code>. Test with the
+  &ldquo;Model Context Tool Inspector&rdquo; extension or ChatGPT desktop browser.
+</small></p>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const log = (msg) => { $("log").textContent += `[${new Date().toISOString().slice(11,19)}] ${msg}\n`; };
+const setBadge = (id, cls, text) => { const el = $(id); el.className = `badge ${cls}`; el.textContent = text; };
+
+let count = 0;
+const render = () => { $("counter").textContent = String(count); };
+const increment = (by = 1) => { count += by; render(); return count; };
+$("manual-inc").addEventListener("click", () => { increment(1); log("human clicked +1"); });
+
+// --- 1. Feature detection ------------------------------------------------
+// Current spec/Chrome/ChatGPT: document.modelContext.
+// Older Chrome previews (and Cloudflare's adapter): navigator.modelContext.
+const mc = document.modelContext ?? navigator.modelContext;
+const where = document.modelContext ? "document.modelContext"
+            : navigator.modelContext ? "navigator.modelContext (legacy)"
+            : null;
+
+if (!mc || typeof mc.registerTool !== "function") {
+  setBadge("api-status", "bad", "not available");
+  setBadge("reg-status", "bad", "skipped");
+  setBadge("tools-status", "bad", "skipped");
+  log("WebMCP not available. Need Chrome 149+ with #enable-webmcp-testing, or the ChatGPT desktop browser.");
+} else {
+  setBadge("api-status", "ok", where);
+  log(`WebMCP found at ${where}`);
+
+  // --- 2. Register two trivial tools ------------------------------------
+  const controller = new AbortController(); // AbortSignal = the unregister mechanism
+
+  const tools = [
+    {
+      name: "echo",
+      description: "Echo back the provided message. Read-only demo tool.",
+      inputSchema: {
+        type: "object",
+        properties: { message: { type: "string", description: "Text to echo back." } },
+        required: ["message"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      execute: async ({ message }) => {
+        log(`tool call: echo("${message}")`);
+        return { echoed: message, at: new Date().toISOString() };
+      },
+    },
+    {
+      name: "increment_counter",
+      description: "Increment the visible on-page counter by the given amount (default 1) and return the new value.",
+      inputSchema: {
+        type: "object",
+        properties: { by: { type: "integer", minimum: 1, maximum: 100, description: "Amount to add." } },
+        additionalProperties: false,
+      },
+      execute: async ({ by }) => {
+        const n = increment(Number.isInteger(by) ? by : 1);
+        log(`tool call: increment_counter(by=${by ?? 1}) -> ${n}`);
+        return { counter: n };
+      },
+    },
+  ];
+
+  try {
+    for (const t of tools) {
+      await mc.registerTool(t, { signal: controller.signal });
+      log(`registered tool: ${t.name}`);
+    }
+    setBadge("reg-status", "ok", `${tools.length} registered`);
+  } catch (err) {
+    setBadge("reg-status", "bad", `failed: ${err.name}`);
+    log(`registerTool failed: ${err}`);
+  }
+
+  // --- 3. Verify via getTools() (Chrome; may be absent elsewhere) --------
+  try {
+    if (typeof mc.getTools === "function") {
+      const listed = await mc.getTools();
+      const names = listed.map((t) => t.name).join(", ");
+      setBadge("tools-status", "ok", names || "(none)");
+      log(`getTools(): [${names}]`);
+    } else {
+      setBadge("tools-status", "warn", "getTools() not exposed");
+      log("getTools() not exposed in this runtime (ok — registration may still work).");
+    }
+  } catch (err) {
+    setBadge("tools-status", "bad", err.name);
+    log(`getTools failed: ${err}`);
+  }
+
+  mc.addEventListener?.("toolchange", () => log("toolchange event fired"));
+
+  // Expose for DevTools poking: __spike.unregister() removes both tools.
+  window.__spike = { controller, unregister: () => controller.abort(), mc };
+}
+</script>
+</body>
+</html>
