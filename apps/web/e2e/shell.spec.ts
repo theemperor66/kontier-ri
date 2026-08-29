@@ -1,0 +1,115 @@
+import { expect, test, type Page } from "@playwright/test";
+
+/**
+ * Shell e2e: command palette, templates, page tabs, persistence (build ->
+ * reload -> everything back), presentation mode, cross-filter chip.
+ */
+
+async function waitReady(page: Page) {
+  await page.goto("/");
+  // DuckDB-WASM boot + demo CSV imports gate everything.
+  await expect(page.getByTestId("load-demo")).toBeEnabled({ timeout: 60_000 });
+}
+
+async function loadDemo(page: Page) {
+  await waitReady(page);
+  await page.getByTestId("load-demo").click();
+  await expect(page.locator("[data-tile-type]")).toHaveCount(8);
+}
+
+test("command palette adds a tile; presentation mode hides chrome", async ({
+  page,
+}) => {
+  await waitReady(page);
+
+  await page.keyboard.press("ControlOrMeta+k");
+  const palette = page.getByTestId("command-palette");
+  await expect(palette).toBeVisible();
+
+  await palette.getByPlaceholder("Type a command or search…").fill("add kpi");
+  await palette.getByText("Add KPI tile").click();
+  await expect(page.locator("[data-tile-type=kpi]")).toHaveCount(1);
+  await expect(palette).toHaveCount(0);
+
+  // Presentation mode: F hides top bar + tabs, exit button restores.
+  await page.keyboard.press("f");
+  await expect(page.locator("header")).toHaveCount(0);
+  await expect(page.getByTestId("exit-presentation")).toBeVisible();
+  await page.getByTestId("exit-presentation").click();
+  await expect(page.locator("header")).toHaveCount(1);
+});
+
+test("template instantiates from empty state; page tabs add/switch", async ({
+  page,
+}) => {
+  await waitReady(page);
+
+  // Templates gallery from the teaching empty state.
+  await page.getByTestId("browse-templates").click();
+  await page.getByTestId("template-revenue-overview").click();
+  await expect(page.locator("[data-tile-type]")).toHaveCount(8);
+  await expect(page.getByLabel("Dashboard title")).toHaveValue(
+    "Revenue overview",
+  );
+  // Template tiles resolve real demo data (not error states).
+  await expect(
+    page.locator("[data-tile-type=kpi]").first(),
+  ).toContainText("€", { timeout: 30_000 });
+
+  // Pages: add -> new empty active page, switch back -> tiles return.
+  await page.getByTestId("add-page").click();
+  await expect(page.locator("[data-tile-type]")).toHaveCount(0);
+  await expect(page.getByTestId("page-tabs")).toContainText("Page 2");
+  await page.getByTestId("page-tabs").getByText("Overview").click();
+  await expect(page.locator("[data-tile-type]")).toHaveCount(8);
+});
+
+test("P0 persistence: dashboard survives reload with live data", async ({
+  page,
+}) => {
+  await loadDemo(page);
+
+  // Rename so we can prove the doc (not just the demo default) came back.
+  const title = page.getByLabel("Dashboard title");
+  await title.fill("Persistence proof");
+  await title.press("Enter");
+
+  // Debounced save (400ms) + a margin before reload.
+  await page.waitForTimeout(900);
+  await page.reload();
+
+  // Full rehydration: title, tiles, and re-queried data (demo datasets
+  // re-import at boot; tiles must resolve numbers again, not spinners).
+  await expect(page.locator("[data-tile-type]")).toHaveCount(8, {
+    timeout: 60_000,
+  });
+  await expect(page.getByLabel("Dashboard title")).toHaveValue(
+    "Persistence proof",
+  );
+  await expect(page.getByTestId("tile-demo_kpi_mrr")).toContainText("€", {
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId("tile-demo_table_failed")).toContainText("1/25");
+});
+
+test("cross-filter: clicking a tile value sets the chip; clearing restores", async ({
+  page,
+}) => {
+  await loadDemo(page);
+
+  // Click a gateway cell in the failed-charges table (5th column) ->
+  // crossFilter {gateway, …} chip appears in the filter bar.
+  const table = page.getByTestId("tile-demo_table_failed");
+  const gatewayCell = table.locator("tbody tr").first().locator("td").nth(4);
+  await expect(gatewayCell).toBeVisible({ timeout: 30_000 });
+  const gateway = (await gatewayCell.innerText()).trim();
+  await gatewayCell.click();
+
+  const chip = page.getByTestId("cross-filter-chip");
+  await expect(chip).toBeVisible();
+  await expect(chip).toContainText(`gateway = ${gateway}`);
+  await expect(chip).toContainText("Recent failed charges");
+
+  await page.getByTestId("clear-cross-filter").click();
+  await expect(chip).toHaveCount(0);
+});

@@ -59,21 +59,29 @@ test("demo dashboard renders 8 tiles with real query results", async ({ page }) 
   expect(cdnRequests).toEqual([]);
 });
 
-test("WebMCP registers 19 static tools, +3 while a tile is selected", async ({
+test("WebMCP registers the static tool surface, +3 while a tile is selected", async ({
   page,
 }) => {
   await page.addInitScript(MOCK_MODEL_CONTEXT);
   await loadDemo(page);
 
-  await expect
-    .poll(() => page.evaluate(() => (window as never as { __registeredTools: Map<string, unknown> }).__registeredTools.size))
-    .toBe(19);
-  await expect(page.getByTestId("webmcp-status")).toContainText("19 tools");
+  // The static surface grows with the product (v1: 19; v2 adds pages/
+  // cross-filter/calc-field/view/export tools). Pin the floor + the pill
+  // staying in sync, and the exact +3 selection-scoped delta.
+  const toolCount = () =>
+    page.evaluate(
+      () =>
+        (window as never as { __registeredTools: Map<string, unknown> })
+          .__registeredTools.size,
+    );
+  await expect.poll(toolCount).toBeGreaterThanOrEqual(19);
+  const staticCount = await toolCount();
+  await expect(page.getByTestId("webmcp-status")).toContainText(
+    `${staticCount} tools`,
+  );
 
   await page.locator("[data-tile-type=kpi]").first().click();
-  await expect
-    .poll(() => page.evaluate(() => (window as never as { __registeredTools: Map<string, unknown> }).__registeredTools.size))
-    .toBe(22);
+  await expect.poll(toolCount).toBe(staticCount + 3);
 });
 
 test("agent add_tile shows attribution chip and activity entry; undo removes it", async ({
