@@ -26,6 +26,7 @@ import { TileError } from "./tile-error";
 import { TileShimmer } from "./tile-shimmer";
 import {
   axisTickFormatter,
+  axisWidth,
   CHART_PALETTE,
   markOpacity,
   tooltipValueFormatter,
@@ -307,8 +308,13 @@ export function ChartTile({ tile }: { tile: Tile }) {
             paddingAngle={2}
             stroke="var(--card)"
             className="cursor-pointer"
-            onClick={(entry: { payload?: Record<string, unknown> }) => {
-              const v = entry?.payload?.[xKey];
+            onClick={(item: unknown) => {
+              // recharts 3 spreads the datum into the sector item; payload
+              // is not always present.
+              const entry = item as
+                | ({ payload?: Record<string, unknown>; name?: unknown } & Record<string, unknown>)
+                | undefined;
+              const v = entry?.payload?.[xKey] ?? entry?.[xKey] ?? entry?.name;
               if (v != null) handleItemClick({ column: xKey, value: v });
             }}
           >
@@ -342,7 +348,7 @@ export function ChartTile({ tile }: { tile: Tile }) {
       <YAxis
         tickLine={false}
         axisLine={false}
-        width={44}
+        width={axisWidth(valueFormat)}
         tickFormatter={axisTickFormatter(valueFormat)}
       />
       <RechartsTooltip
@@ -376,22 +382,28 @@ export function ChartTile({ tile }: { tile: Tile }) {
   ) : null;
 
   // Single ComposedChart for line/area/bar so the dashed trendline (a Line)
-  // renders in every cartesian chart type.
-  const cartesianClick =
-    spec.chartType === "line" || spec.chartType === "area"
-      ? (state: { activeLabel?: unknown }) => {
-          if (state?.activeLabel != null) {
-            handleItemClick({ column: xKey, value: state.activeLabel });
-          }
-        }
-      : undefined;
+  // renders in every cartesian chart type. Cross-filter uses the CHART-level
+  // onClick (activeLabel): recharts 3 re-renders hovered bars into
+  // active/inactive overlay layers that swallow per-<Bar> onClick.
+  const cartesianClick = (
+    state: { activeLabel?: unknown },
+    e?: { target?: EventTarget | null },
+  ) => {
+    const t = e?.target as HTMLElement | null | undefined;
+    if (t && typeof t.closest === "function" && t.closest(".recharts-brush")) {
+      return; // brush drags must not emit cross-filters
+    }
+    if (state?.activeLabel != null) {
+      handleItemClick({ column: xKey, value: state.activeLabel });
+    }
+  };
 
   return (
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart
         {...common}
         onClick={cartesianClick}
-        className={cartesianClick ? "cursor-pointer" : undefined}
+        className="cursor-pointer"
       >
         {axes}
         {annotationLines}
@@ -433,11 +445,6 @@ export function ChartTile({ tile }: { tile: Tile }) {
                   radius={spec.stacked ? [0, 0, 0, 0] : [3, 3, 0, 0]}
                   maxBarSize={40}
                   hide={hidden.has(k)}
-                  className="cursor-pointer"
-                  onClick={(entry: { payload?: Record<string, unknown> }) => {
-                    const v = entry?.payload?.[xKey];
-                    if (v != null) handleItemClick({ column: xKey, value: v });
-                  }}
                 >
                   {plotted.map((row, j) => {
                     const raw = row[k];

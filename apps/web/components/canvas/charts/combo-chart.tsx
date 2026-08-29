@@ -14,6 +14,7 @@ import {
 import type { FormatOptions, ValueFormat } from "@/lib/format";
 import {
   axisTickFormatter,
+  axisWidth,
   markOpacity,
   tooltipValueFormatter,
   TOOLTIP_STYLE,
@@ -63,6 +64,12 @@ export function ComboChartView({
       <ComposedChart
         data={data}
         margin={{ top: 8, right: hasRight ? 0 : 8, bottom: 0, left: 0 }}
+        onClick={(state: { activeLabel?: unknown }) => {
+          if (state?.activeLabel != null) {
+            onItemClick?.({ column: xKey, value: state.activeLabel });
+          }
+        }}
+        className={onItemClick ? "cursor-pointer" : undefined}
       >
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey={xKey} tickLine={false} axisLine={false} minTickGap={24} />
@@ -70,7 +77,7 @@ export function ComboChartView({
           yAxisId="left"
           tickLine={false}
           axisLine={false}
-          width={44}
+          width={axisWidth(valueFormat)}
           tickFormatter={axisTickFormatter(valueFormat)}
         />
         {hasRight ? (
@@ -79,7 +86,7 @@ export function ComboChartView({
             orientation="right"
             tickLine={false}
             axisLine={false}
-            width={44}
+            width={axisWidth(y2Format ?? valueFormat)}
             tickFormatter={axisTickFormatter(y2Format ?? valueFormat)}
           />
         ) : null}
@@ -115,11 +122,6 @@ export function ComboChartView({
               radius={[3, 3, 0, 0]}
               maxBarSize={40}
               hide={hiddenKeys?.has(cfg.key)}
-              className={onItemClick ? "cursor-pointer" : undefined}
-              onClick={(entry: { payload?: Record<string, unknown> }) => {
-                const v = entry?.payload?.[xKey];
-                if (v != null) onItemClick?.({ column: xKey, value: v });
-              }}
             >
               {data.map((row, j) => (
                 <Cell

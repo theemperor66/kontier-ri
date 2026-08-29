@@ -51,8 +51,13 @@ export function DonutChartView({
             paddingAngle={2}
             stroke="var(--card)"
             className={onItemClick ? "cursor-pointer" : undefined}
-            onClick={(entry: { payload?: Record<string, unknown> }) => {
-              const v = entry?.payload?.[xKey];
+            onClick={(item: unknown) => {
+              // recharts 3 spreads the datum into the item; payload is not
+              // always present (Pie sectors, Scatter points).
+              const entry = item as
+                | ({ payload?: Record<string, unknown>; name?: unknown } & Record<string, unknown>)
+                | undefined;
+              const v = entry?.payload?.[xKey] ?? entry?.[xKey] ?? entry?.name;
               if (v != null) onItemClick?.({ column: xKey, value: v });
             }}
           >

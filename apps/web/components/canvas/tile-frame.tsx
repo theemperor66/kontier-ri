@@ -44,7 +44,13 @@ function useRecentPulse(timestamp: number | undefined): boolean {
   return active;
 }
 
-function TileBody({ tile }: { tile: Tile }) {
+/**
+ * Memoized so selection/hover re-renders of the frame do not re-render the
+ * chart: a recharts re-render between pointerdown and mouseup recreates the
+ * SVG nodes and the browser then suppresses the click (breaks click-to-
+ * cross-filter on freshly selected tiles).
+ */
+const TileBody = memo(function TileBody({ tile }: { tile: Tile }) {
   switch (tile.type) {
     case "kpi":
       return <KpiTile tile={tile} />;
@@ -55,7 +61,7 @@ function TileBody({ tile }: { tile: Tile }) {
     case "markdown":
       return <MarkdownTile tile={tile} />;
   }
-}
+});
 
 export interface TileFrameProps {
   tile: Tile;

@@ -49,6 +49,12 @@ export function HBarChartView({
         data={data}
         layout="vertical"
         margin={{ top: 4, right: 12, bottom: 0, left: 0 }}
+        onClick={(state: { activeLabel?: unknown }) => {
+          if (state?.activeLabel != null) {
+            onItemClick?.({ column: xKey, value: state.activeLabel });
+          }
+        }}
+        className={onItemClick ? "cursor-pointer" : undefined}
       >
         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
         <XAxis
@@ -64,6 +70,7 @@ export function HBarChartView({
           axisLine={false}
           width={labelWidth}
           tick={{ fontSize: 11 }}
+          interval={0}
         />
         <RechartsTooltip
           contentStyle={TOOLTIP_STYLE}
@@ -79,11 +86,6 @@ export function HBarChartView({
             radius={stacked ? [0, 0, 0, 0] : [0, 3, 3, 0]}
             maxBarSize={22}
             hide={hiddenKeys?.has(k)}
-            className={onItemClick ? "cursor-pointer" : undefined}
-            onClick={(entry: { payload?: Record<string, unknown> }) => {
-              const v = entry?.payload?.[xKey];
-              if (v != null) onItemClick?.({ column: xKey, value: v });
-            }}
           >
             {data.map((row, j) => {
               const raw = row[k];

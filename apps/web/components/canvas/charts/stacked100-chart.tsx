@@ -27,7 +27,8 @@ export function Stacked100ChartView({
   onItemClick,
   activeValue,
   hiddenKeys,
-}: BaseChartProps) {
+  children,
+}: BaseChartProps & { children?: React.ReactNode }) {
   const normalized = useMemo(() => {
     return data.map((row) => {
       let total = 0;
@@ -53,13 +54,19 @@ export function Stacked100ChartView({
         data={normalized}
         margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
         stackOffset="expand"
+        onClick={(state: { activeLabel?: unknown }) => {
+          if (state?.activeLabel != null) {
+            onItemClick?.({ column: xKey, value: state.activeLabel });
+          }
+        }}
+        className={onItemClick ? "cursor-pointer" : undefined}
       >
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey={xKey} tickLine={false} axisLine={false} minTickGap={24} />
         <YAxis
           tickLine={false}
           axisLine={false}
-          width={40}
+          width={48}
           domain={[0, 1]}
           ticks={[0, 0.25, 0.5, 0.75, 1]}
           tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
@@ -79,17 +86,13 @@ export function Stacked100ChartView({
             fill={colorFor(i)}
             maxBarSize={40}
             hide={hiddenKeys?.has(k)}
-            className={onItemClick ? "cursor-pointer" : undefined}
-            onClick={(entry: { payload?: Record<string, unknown> }) => {
-              const v = entry?.payload?.[xKey];
-              if (v != null) onItemClick?.({ column: xKey, value: v });
-            }}
           >
             {normalized.map((row, j) => (
               <Cell key={j} opacity={markOpacity(activeValue, row[xKey])} />
             ))}
           </Bar>
         ))}
+        {children}
       </BarChart>
     </ResponsiveContainer>
   );

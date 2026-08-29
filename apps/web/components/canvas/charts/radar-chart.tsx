@@ -24,7 +24,8 @@ export function RadarChartView({
   colorFor,
   valueFormat,
   hiddenKeys,
-}: BaseChartProps) {
+  children,
+}: BaseChartProps & { children?: React.ReactNode }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <RadarChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 16 }}>
@@ -54,6 +55,7 @@ export function RadarChartView({
             hide={hiddenKeys?.has(k)}
           />
         ))}
+        {children}
       </RadarChart>
     </ResponsiveContainer>
   );

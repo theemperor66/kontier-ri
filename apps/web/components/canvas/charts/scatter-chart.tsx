@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import {
   axisTickFormatter,
+  axisWidth,
   markOpacity,
   tooltipValueFormatter,
   TOOLTIP_STYLE,
@@ -75,6 +76,12 @@ export function ScatterChartView({
       <ComposedChart
         data={plotted}
         margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+        onClick={(state: { activeLabel?: unknown }) => {
+          if (state?.activeLabel != null) {
+            onItemClick?.({ column: xKey, value: state.activeLabel });
+          }
+        }}
+        className={onItemClick ? "cursor-pointer" : undefined}
       >
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis
@@ -88,7 +95,7 @@ export function ScatterChartView({
         <YAxis
           tickLine={false}
           axisLine={false}
-          width={44}
+          width={axisWidth(valueFormat)}
           tickFormatter={axisTickFormatter(valueFormat)}
         />
         <RechartsTooltip
@@ -104,8 +111,13 @@ export function ScatterChartView({
             fill={colorFor(i)}
             hide={hiddenKeys?.has(k)}
             className={onItemClick ? "cursor-pointer" : undefined}
-            onClick={(entry: { payload?: Record<string, unknown> }) => {
-              const v = entry?.payload?.[xKey];
+            onClick={(item: unknown) => {
+              // recharts 3 spreads the datum into the item; payload is not
+              // always present (Pie sectors, Scatter points).
+              const entry = item as
+                | ({ payload?: Record<string, unknown>; name?: unknown } & Record<string, unknown>)
+                | undefined;
+              const v = entry?.payload?.[xKey] ?? entry?.[xKey] ?? entry?.name;
               if (v != null) onItemClick?.({ column: xKey, value: v });
             }}
             shape={(props: unknown) => {

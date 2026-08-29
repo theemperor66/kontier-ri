@@ -70,13 +70,15 @@ export function HeatmapChartView({
   }
   const { xs, ys, cells, min, max } = model;
   const span = max - min;
+  // Many columns: rotate headers so "2024-09"-style labels stay readable.
+  const rotateHeaders = xs.length > 8;
 
   return (
     <div className="h-full w-full overflow-auto">
       <div
         className="grid h-full min-h-0 gap-px"
         style={{
-          gridTemplateColumns: `minmax(48px, auto) repeat(${xs.length}, minmax(28px, 1fr))`,
+          gridTemplateColumns: `minmax(76px, auto) repeat(${xs.length}, minmax(24px, 1fr))`,
           gridTemplateRows: `auto repeat(${ys.length}, minmax(20px, 1fr))`,
         }}
       >
@@ -86,10 +88,23 @@ export function HeatmapChartView({
             key={`cx-${x}`}
             type="button"
             title={x}
-            className={`truncate px-0.5 text-center text-[10px] text-muted-foreground ${onItemClick ? "cursor-pointer hover:text-foreground" : "cursor-default"}`}
+            className={`text-[10px] text-muted-foreground ${onItemClick ? "cursor-pointer hover:text-foreground" : "cursor-default"} ${
+              rotateHeaders
+                ? "flex max-h-14 items-end justify-center overflow-hidden pb-0.5"
+                : "truncate px-0.5 text-center"
+            }`}
             onClick={() => onItemClick?.({ column: xKey, value: x })}
           >
-            {x}
+            {rotateHeaders ? (
+              <span
+                className="inline-block whitespace-nowrap text-[9px] leading-none"
+                style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+              >
+                {x}
+              </span>
+            ) : (
+              x
+            )}
           </button>
         ))}
         {ys.map((y) => (

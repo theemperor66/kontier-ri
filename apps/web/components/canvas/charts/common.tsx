@@ -64,6 +64,12 @@ export function axisTickFormatter(valueFormat?: ValueFormat | FormatOptions) {
   return (v: number): string => formatAxisTick(v, valueFormat);
 }
 
+/** Y-axis width: currency ticks ("\u20ac100K") need more room than "100K". */
+export function axisWidth(valueFormat?: ValueFormat | FormatOptions): number {
+  const style = typeof valueFormat === "string" ? valueFormat : valueFormat?.style;
+  return style === "currency" ? 56 : 44;
+}
+
 /** Opacity for a clickable mark under an active cross-filter. */
 export function markOpacity(
   activeValue: unknown,
