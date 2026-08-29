@@ -21,6 +21,10 @@ export {
 // this automatically; exported for import/share-URL code paths.
 export { migrateDoc, withActivePageMirror, V1_PAGE_ID } from "./migrate";
 
+// Re-create doc-persisted views in the engine after a (re)load.
+export { syncViewsToDataSource } from "./views-sync";
+export type { ViewSyncResult } from "./views-sync";
+
 // Zod schemas (tool inputs + tile specs; all .strict()).
 export * as schemas from "./schemas";
 
