@@ -1,0 +1,5 @@
+plan_id,name,monthly_price_eur,price_from_2026_03_eur
+plan_starter,Starter,29,29
+plan_growth,Growth,99,149
+plan_scale,Scale,299,299
+plan_enterprise,Enterprise,999,999
