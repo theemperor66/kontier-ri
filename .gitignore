@@ -10,3 +10,4 @@ dist/
 next-env.d.ts
 # build-time copy of duckdb-wasm bundles (scripts/copy-duckdb.mjs)
 apps/web/public/duckdb/
+apps/web/out/
