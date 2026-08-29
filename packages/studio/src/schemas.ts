@@ -344,3 +344,79 @@ export const restyleSelectedTileInput = z
   .strict();
 
 export const explainSelectedTileInput = emptyInput;
+
+// --- tool inputs: Group 5 (PLAN-V2 — pages, cross-filter, calc fields, views)
+
+export const identifierSchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(
+    /^[a-zA-Z_][a-zA-Z0-9_]*$/,
+    "Use letters, digits and underscores (no leading digit).",
+  );
+
+export const addPageInput = z
+  .object({ name: z.string().min(1).max(60) })
+  .strict();
+export const renamePageInput = z
+  .object({
+    pageId: z.string().min(1),
+    name: z.string().min(1).max(60),
+    force: z.boolean().optional(),
+  })
+  .strict();
+export const removePageInput = z.object({ pageId: z.string().min(1) }).strict();
+export const switchPageInput = z.object({ pageId: z.string().min(1) }).strict();
+
+export const setCrossFilterInput = z
+  .object({
+    column: z.string().min(1),
+    value: z.union([z.string(), z.number(), z.boolean()]),
+    sourceTileId: z.string().min(1).optional(),
+  })
+  .strict();
+export const clearCrossFilterInput = emptyInput;
+
+export const setTileFiltersInput = z
+  .object({
+    tileId: z.string().min(1),
+    /** Empty array clears the tile's filters. */
+    filters: z.array(tileFilterSchema).max(10),
+    force: z.boolean().optional(),
+  })
+  .strict();
+
+export const createCalculatedFieldInput = z
+  .object({
+    name: identifierSchema,
+    dataset: z.string().min(1),
+    /** SQL expression fragment, e.g. sum(amount)/count(DISTINCT customer_id). */
+    expression: z.string().min(1).max(2000),
+    description: z.string().min(1).max(300).optional(),
+  })
+  .strict();
+export const listCalculatedFieldsInput = emptyInput;
+export const removeCalculatedFieldInput = z
+  .object({ name: identifierSchema })
+  .strict();
+
+export const createViewInput = z
+  .object({
+    /** Namespaced automatically: "mrr" becomes "view_mrr". */
+    name: z.string().min(1).max(64),
+    /** SELECT-only body (read-only guard; single statement). */
+    sql: z.string().min(1).max(10000),
+    description: z.string().min(1).max(300).optional(),
+  })
+  .strict();
+export const removeViewInput = z
+  .object({ name: z.string().min(1).max(64) })
+  .strict();
+
+export const exportTileDataInput = z
+  .object({
+    tileId: z.string().min(1),
+    limit: z.number().int().min(1).max(1000).default(500),
+  })
+  .strict();

@@ -56,6 +56,32 @@ const cases: Record<string, [z.ZodType, Record<string, unknown>]> = {
     { chartType: "bar" },
   ],
   explain_selected_tile: [schemas.explainSelectedTileInput, {}],
+  // PLAN-V2 tools
+  set_tile_filters: [
+    schemas.setTileFiltersInput,
+    { tileId: "t1", filters: [{ column: "plan", op: "eq", value: "pro" }] },
+  ],
+  set_cross_filter: [
+    schemas.setCrossFilterInput,
+    { column: "plan", value: "pro" },
+  ],
+  clear_cross_filter: [schemas.clearCrossFilterInput, {}],
+  add_page: [schemas.addPageInput, { name: "Retention" }],
+  rename_page: [schemas.renamePageInput, { pageId: "p1", name: "Ops" }],
+  remove_page: [schemas.removePageInput, { pageId: "p1" }],
+  switch_page: [schemas.switchPageInput, { pageId: "p1" }],
+  create_calculated_field: [
+    schemas.createCalculatedFieldInput,
+    { name: "arpu", dataset: "invoices", expression: "sum(amount)/count(DISTINCT customer_id)" },
+  ],
+  list_calculated_fields: [schemas.listCalculatedFieldsInput, {}],
+  remove_calculated_field: [schemas.removeCalculatedFieldInput, { name: "arpu" }],
+  create_view: [
+    schemas.createViewInput,
+    { name: "mrr", sql: "SELECT month, sum(amount) FROM invoices GROUP BY 1" },
+  ],
+  remove_view: [schemas.removeViewInput, { name: "view_mrr" }],
+  export_tile_data: [schemas.exportTileDataInput, { tileId: "t1" }],
 };
 
 describe("tool input schemas are strict", () => {
@@ -94,6 +120,84 @@ describe("tool input schemas are strict", () => {
     ).toBe(false);
   });
 
+  it("v2 spec surface: strictness + refinements", () => {
+    // othersBucket needs limit + exactly one dim.
+    expect(
+      schemas.chartQuerySchema.safeParse({
+        dims: ["plan"],
+        measures: [{ col: "amount", agg: "sum" }],
+        othersBucket: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      schemas.chartQuerySchema.safeParse({
+        dims: ["plan", "region"],
+        measures: [{ col: "amount", agg: "sum" }],
+        limit: 5,
+        othersBucket: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      schemas.chartQuerySchema.safeParse({
+        dims: ["plan"],
+        measures: [{ col: "amount", agg: "sum" }],
+        limit: 5,
+        othersBucket: true,
+      }).success,
+    ).toBe(true);
+    // New chart types + analytics/format/filters parse; junk keys rejected.
+    expect(
+      schemas.chartSpecSchema.safeParse({
+        dataset: "d",
+        query: { sql: "SELECT 1" },
+        chartType: "heatmap",
+        xKey: "x",
+        yKey: "y",
+        legend: true,
+        series: [{ key: "s", type: "line", axis: "right" }],
+        filters: [{ column: "plan", op: "in", value: ["a", "b"] }],
+        analytics: { trendline: true, referenceLine: { value: 100, label: "target" } },
+        format: { value: "currency", rules: [{ op: "gt", value: 0, color: "#f00" }] },
+      }).success,
+    ).toBe(true);
+    expect(
+      schemas.chartSpecSchema.safeParse({
+        dataset: "d",
+        query: { sql: "SELECT 1" },
+        chartType: "hologram",
+        xKey: "x",
+      }).success,
+    ).toBe(false);
+    expect(
+      schemas.tileAnalyticsSchema.safeParse({ referenceLine: { y: 1 } }).success,
+    ).toBe(false);
+    // KPI format: legacy string AND object form both valid.
+    expect(
+      schemas.kpiSpecSchema.safeParse({
+        dataset: "d",
+        measure: "m",
+        agg: "sum",
+        format: "currency",
+      }).success,
+    ).toBe(true);
+    expect(
+      schemas.kpiSpecSchema.safeParse({
+        dataset: "d",
+        measure: "m",
+        agg: "sum",
+        format: { style: "currency", currency: "USD" },
+      }).success,
+    ).toBe(true);
+    // Calculated field name must be an identifier.
+    expect(
+      schemas.createCalculatedFieldInput.safeParse({
+        name: "1bad",
+        dataset: "d",
+        expression: "1",
+      }).success,
+    ).toBe(false);
+  });
+
   it("enforces documented caps and formats", () => {
     expect(schemas.runSqlInput.safeParse({ sql: "SELECT 1", limit: 501 }).success).toBe(false);
     expect(schemas.runSqlInput.parse({ sql: "SELECT 1" }).limit).toBe(100);
@@ -121,7 +225,7 @@ describe("JSON Schema generation", () => {
   ];
 
   it("every tool schema converts via z.toJSONSchema to a strict object", () => {
-    expect(defs).toHaveLength(22);
+    expect(defs).toHaveLength(35);
     for (const def of defs) {
       const js = z.toJSONSchema(def.inputSchema) as Record<string, unknown>;
       expect(js["type"], def.name).toBe("object");

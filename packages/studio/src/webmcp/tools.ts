@@ -8,35 +8,53 @@ import {
 } from "@kontier-ri/datasource";
 import {
   addAnnotationInput,
+  addPageInput,
   addTileInput,
+  clearCrossFilterInput,
   clearGlobalFiltersInput,
+  createCalculatedFieldInput,
+  createViewInput,
   describeTileInput,
   editSelectedTileInput,
   explainSelectedTileInput,
+  exportTileDataInput,
   getActivityLogInput,
   getDashboardStateInput,
   getDatasetSchemaInput,
   getUserFocusInput,
+  listCalculatedFieldsInput,
   listDatasetsInput,
   moveTileInput,
   profileColumnInput,
+  removeCalculatedFieldInput,
+  removePageInput,
   removeTileInput,
+  removeViewInput,
+  renamePageInput,
   restyleSelectedTileInput,
   runSqlInput,
+  setCrossFilterInput,
   sampleRowsInput,
   setDashboardTitleInput,
   setDateRangeInput,
   setGlobalFilterInput,
   setThemeInput,
+  setTileFiltersInput,
+  switchPageInput,
   tileSpecPatchSchemas,
   tileSpecSchemas,
   updateTileInput,
 } from "../schemas";
-import { pruneHumanEdits, useDashboardStore } from "../store";
-import { buildTileQuerySQL, summarizeSpec } from "../tile-sql";
+import { normalizeViewName, pruneHumanEdits, useDashboardStore } from "../store";
+import {
+  buildTileQuery,
+  summarizeSpec,
+  type TileQueryContext,
+} from "../tile-sql";
 import type {
   ActionResult,
   AddTileInput,
+  DashboardDoc,
   DashboardStore,
   Tile,
   TilePatch,
@@ -149,6 +167,7 @@ function toToolResult(
     return {
       ok: true,
       ...(result.tileId ? { tileId: result.tileId } : {}),
+      ...(result.pageId ? { pageId: result.pageId } : {}),
       ...extra,
     };
   }
@@ -224,15 +243,78 @@ function describeTilePayload(tile: Tile) {
   };
 }
 
-async function tileDataSummary(ds: DataSource, tile: Tile): Promise<unknown> {
-  if (tile.type === "markdown") return null;
-  const sql = buildTileQuerySQL(tile);
-  if (!sql) return { error: "Tile spec has no query (missing sql or measure+agg)." };
+/** TileQueryContext from the live doc (filters, cross-filter, calc fields). */
+async function docQueryContext(
+  ds: DataSource,
+  doc: DashboardDoc,
+): Promise<TileQueryContext> {
+  let datasets: TileQueryContext["datasets"];
   try {
-    return await runCapped(ds, sql, DESCRIBE_ROW_CAP);
+    datasets = (await ds.listDatasets()).map((d) => ({
+      name: d.name,
+      columns: d.columns.map((c) => ({ name: c.name, type: c.type })),
+    }));
+  } catch {
+    /* schema-aware pushdown degrades gracefully */
+  }
+  return {
+    ...(datasets ? { datasets } : {}),
+    globalFilters: doc.filters.filters,
+    dateRange: doc.filters.dateRange,
+    crossFilter: doc.crossFilter,
+    calculatedFields: doc.calculatedFields,
+  };
+}
+
+/** Run a tile's query with the doc context; retry the fallback on failure. */
+async function runTileQuery(
+  ds: DataSource,
+  tile: Tile,
+  doc: DashboardDoc,
+  cap: number,
+): Promise<
+  | Awaited<ReturnType<typeof runCapped>>
+  | { error: string; hint?: string }
+  | null
+> {
+  if (tile.type === "markdown") return null;
+  const built = buildTileQuery(tile, await docQueryContext(ds, doc));
+  if (!built) {
+    return { error: "Tile spec has no query (missing sql or measure+agg)." };
+  }
+  try {
+    return await runCapped(ds, built.sql, cap);
   } catch (err) {
+    if (built.fallbackSQL && built.fallbackSQL !== built.sql) {
+      try {
+        return await runCapped(ds, built.fallbackSQL, cap);
+      } catch {
+        /* fall through to the primary error */
+      }
+    }
     return sqlError(err);
   }
+}
+
+async function tileDataSummary(
+  ds: DataSource,
+  tile: Tile,
+  doc: DashboardDoc,
+): Promise<unknown> {
+  return runTileQuery(ds, tile, doc, DESCRIBE_ROW_CAP);
+}
+
+/** RFC-4180-ish CSV cell: quote when the value contains , " or newline. */
+export function csvCell(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+}
+
+export function toCSV(columns: { name: string }[], rows: unknown[][]): string {
+  const header = columns.map((c) => csvCell(c.name)).join(",");
+  const body = rows.map((r) => r.map(csvCell).join(","));
+  return [header, ...body].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -244,8 +326,13 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
   const store: StudioStoreApi = ctx.store ?? useDashboardStore;
   const state = () => store.getState();
 
-  const findTile = (tileId: string): Tile | undefined =>
-    state().doc.tiles.find((t) => t.id === tileId);
+  const findTile = (tileId: string): Tile | undefined => {
+    for (const page of state().doc.pages) {
+      const tile = page.tiles.find((t) => t.id === tileId);
+      if (tile) return tile;
+    }
+    return undefined;
+  };
 
   const applyPatch = (
     tile: Tile,
@@ -279,7 +366,11 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
         return datasets.map((d) => ({
           name: d.name,
           rowCount: d.rowCount,
-          ...(d.group ? { description: `${d.group} dataset` } : {}),
+          ...(d.description
+            ? { description: d.description }
+            : d.group
+              ? { description: `${d.group} dataset` }
+              : {}),
         }));
       },
     }),
@@ -387,10 +478,12 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
     tool({
       name: "add_tile",
       description:
-        "Add a dashboard tile. spec by type — " +
-        'kpi: {dataset, sql | measure+agg, format: "currency"|"number"|"percent", compare?: "prev_period"}; ' +
-        'chart: {dataset, query: {sql} | {dims, measures: [{col, agg}], orderBy?, limit?}, chartType: "line"|"bar"|"area"|"pie", xKey, seriesKeys?, stacked?, color?}; ' +
-        "table: {dataset, sql, pageSize<=25}; markdown: {content}. " +
+        "Add a dashboard tile (lands on the ACTIVE page). spec by type — " +
+        'kpi: {dataset, sql | measure+agg, format: "currency"|"number"|"percent"|{style,currency?}, compare?: "prev_period", filters?, rules?}; ' +
+        'chart: {dataset, query: {sql} | {dims, measures: [{col, agg}], orderBy?, limit?, othersBucket?}, chartType: "line"|"bar"|"area"|"pie"|"scatter"|"combo"|"donut"|"hbar"|"stacked100"|"funnel"|"heatmap"|"radar", xKey, seriesKeys?, yKey?, series?, stacked?, legend?, color?, filters?, analytics?: {trendline?, referenceLine?: {value,label?}}, format?: {value?, y2?, rules?: [{op,value,color}]}}; ' +
+        "table: {dataset, sql, pageSize<=25, filters?, format?}; markdown: {content}. " +
+        "othersBucket (with limit + 1 dim) keeps top-N groups and buckets the rest into 'Other'. " +
+        "Measure cols may name calculated fields (list_calculated_fields). " +
         "Layout is optional (12-column grid, auto-placed). Returns {tileId}.",
       inputSchema: addTileInput,
       execute: (input) => {
@@ -422,10 +515,11 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
     tool({
       name: "update_tile",
       description:
-        "Shallow-merge a patch into a tile: {title?, spec?: {key: value}}. " +
-        "Spec keys must fit the tile's type. If the user edited a property " +
-        "in the last 10 minutes you get a conflict — ask the user, then " +
-        "retry with force: true.",
+        "Shallow-merge a patch into a tile (any page): {title?, spec?: {key: value}}. " +
+        "Spec keys must fit the tile's type (see add_tile for the full " +
+        "surface incl. chartType/filters/analytics/format). If the user " +
+        "edited a property in the last 10 minutes you get a conflict — ask " +
+        "the user, then retry with force: true.",
       inputSchema: updateTileInput,
       execute: ({ tileId, patch, force }) => {
         const tile = findTile(tileId);
@@ -608,6 +702,272 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
         return toToolResult(result);
       },
     }),
+    tool({
+      name: "set_tile_filters",
+      description:
+        "Replace ONE tile's own filters (ANDed with the global filters): " +
+        "{tileId, filters: [{column, op: eq|in|between|contains, value}]}. " +
+        "Empty array clears them. Not available on markdown tiles.",
+      inputSchema: setTileFiltersInput,
+      execute: ({ tileId, filters, force }) => {
+        const tile = findTile(tileId);
+        if (!tile) {
+          return {
+            error: `No tile with id "${tileId}".`,
+            hint: "Use get_dashboard_state to list tiles.",
+          };
+        }
+        const result = state().setTileFilters(tileId, filters, {
+          origin: "agent",
+          label:
+            filters.length === 0
+              ? `Cleared filters on "${tile.title}"`
+              : `Filtered "${tile.title}" (${filters.map((f) => f.column).join(", ")})`,
+          ...(force !== undefined ? { force } : {}),
+        });
+        return toToolResult(result);
+      },
+    }),
+    tool({
+      name: "set_cross_filter",
+      description:
+        "Cross-filter the dashboard as if the user clicked a chart element: " +
+        "{column, value, sourceTileId?}. Every tile except the source (and " +
+        "opted-out tiles) filters to column = value. Undoable.",
+      inputSchema: setCrossFilterInput,
+      execute: ({ column, value, sourceTileId }) => {
+        const result = state().setCrossFilter(
+          { column, value, ...(sourceTileId ? { sourceTileId } : {}) },
+          {
+            origin: "agent",
+            label: `Cross-filtered ${column} = ${shortValue(value)}`,
+          },
+        );
+        return toToolResult(result);
+      },
+    }),
+    tool({
+      name: "clear_cross_filter",
+      description: "Remove the active cross-filter (the click-to-filter chip).",
+      inputSchema: clearCrossFilterInput,
+      execute: () =>
+        toToolResult(
+          state().clearCrossFilter({
+            origin: "agent",
+            label: "Cleared cross-filter",
+          }),
+        ),
+    }),
+    tool({
+      name: "add_page",
+      description:
+        "Add a new (empty) dashboard page and switch to it. Returns {pageId}.",
+      inputSchema: addPageInput,
+      execute: ({ name }) =>
+        toToolResult(
+          state().addPage(name, {
+            origin: "agent",
+            label: `Added page "${name}"`,
+          }),
+        ),
+    }),
+    tool({
+      name: "rename_page",
+      description: "Rename a dashboard page.",
+      inputSchema: renamePageInput,
+      execute: ({ pageId, name, force }) => {
+        const page = state().doc.pages.find((p) => p.id === pageId);
+        if (!page) {
+          return {
+            error: `No page with id "${pageId}".`,
+            hint: "Use get_dashboard_state to list pages.",
+          };
+        }
+        const result = state().renamePage(pageId, name, {
+          origin: "agent",
+          label: `Renamed page "${page.name}" to "${name}"`,
+          ...(force !== undefined ? { force } : {}),
+        });
+        return toToolResult(result);
+      },
+    }),
+    tool({
+      name: "remove_page",
+      description:
+        "Remove a page AND its tiles (undoable via the activity feed). " +
+        "The last remaining page cannot be removed.",
+      inputSchema: removePageInput,
+      execute: ({ pageId }) => {
+        const page = state().doc.pages.find((p) => p.id === pageId);
+        if (!page) {
+          return {
+            error: `No page with id "${pageId}".`,
+            hint: "Use get_dashboard_state to list pages.",
+          };
+        }
+        const result = state().removePage(pageId, {
+          origin: "agent",
+          label: `Removed page "${page.name}"`,
+        });
+        return toToolResult(result, {
+          undoHint: "The user can undo this from the activity feed.",
+        });
+      },
+    }),
+    tool({
+      name: "switch_page",
+      description:
+        "Switch the visible page. Tiles listed by get_dashboard_state under " +
+        "`tiles` belong to the ACTIVE page.",
+      inputSchema: switchPageInput,
+      execute: ({ pageId }) => {
+        const page = state().doc.pages.find((p) => p.id === pageId);
+        if (!page) {
+          return {
+            error: `No page with id "${pageId}".`,
+            hint: "Use get_dashboard_state to list pages.",
+          };
+        }
+        const result = state().switchPage(pageId, {
+          origin: "agent",
+          label: `Switched to page "${page.name}"`,
+        });
+        return toToolResult(result);
+      },
+    }),
+    tool({
+      name: "create_calculated_field",
+      description:
+        "Define a named SQL expression for one dataset, usable as a measure " +
+        "col / dim in structured tile queries and as a KPI measure. " +
+        'Example: {name: "arpu", dataset: "invoices", expression: ' +
+        '"sum(amount) / count(DISTINCT customer_id)"}. Aggregate expressions ' +
+        "are used verbatim; row-level ones get wrapped by the measure agg. " +
+        "The expression is validated against the dataset before saving.",
+      inputSchema: createCalculatedFieldInput,
+      execute: async ({ name, dataset, expression, description }) => {
+        // Probe the expression against the dataset so typos fail HERE.
+        try {
+          await runCapped(
+            ds,
+            `SELECT (${expression}) AS ${quoteIdent(name)} FROM ${quoteIdent(dataset)}`,
+            1,
+          );
+        } catch (err) {
+          return {
+            error: `Expression failed against ${dataset}: ${message(err)}`,
+            hint: "Check column names with get_dataset_schema. The expression must be a single SQL expression (no SELECT, no ';').",
+          };
+        }
+        const result = state().addCalculatedField(
+          { name, dataset, expression, ...(description ? { description } : {}) },
+          { origin: "agent", label: `Defined calculated field "${name}"` },
+        );
+        const kind = state().doc.calculatedFields.find(
+          (f) => f.name === name,
+        )?.kind;
+        return toToolResult(result, kind ? { name, kind } : { name });
+      },
+    }),
+    tool({
+      name: "list_calculated_fields",
+      description:
+        "List the calculated fields: [{name, dataset, expression, kind}]. " +
+        "kind aggregate = usable as a measure directly; row = wrapped by agg.",
+      inputSchema: listCalculatedFieldsInput,
+      annotations: READ_ONLY,
+      execute: () =>
+        state().doc.calculatedFields.map((f) => ({
+          name: f.name,
+          dataset: f.dataset,
+          expression: f.expression,
+          kind: f.kind,
+          ...(f.description ? { description: f.description } : {}),
+        })),
+    }),
+    tool({
+      name: "remove_calculated_field",
+      description: "Remove a calculated field by name (undoable).",
+      inputSchema: removeCalculatedFieldInput,
+      execute: ({ name }) =>
+        toToolResult(
+          state().removeCalculatedField(name, {
+            origin: "agent",
+            label: `Removed calculated field "${name}"`,
+          }),
+        ),
+    }),
+    tool({
+      name: "create_view",
+      description:
+        "Create a SQL view from a SELECT query; it appears as a dataset " +
+        '(name auto-namespaced: "mrr" -> "view_mrr") usable in tiles and ' +
+        "run_sql. Body must be a single read-only SELECT. Returns the final " +
+        "{name, columns, rowCount}.",
+      inputSchema: createViewInput,
+      execute: async ({ name, sql, description }) => {
+        if (!ds.createView || !ds.dropView) {
+          return { error: "This datasource does not support views." };
+        }
+        const st = state();
+        let viewName: string;
+        try {
+          viewName = normalizeViewName(name);
+        } catch (err) {
+          return { error: message(err) };
+        }
+        if (st.doc.views.some((v) => v.name === viewName)) {
+          return {
+            error: `A view named "${viewName}" already exists. remove_view it first.`,
+          };
+        }
+        let meta;
+        try {
+          meta = await ds.createView(viewName, sql);
+        } catch (err) {
+          return {
+            error: message(err),
+            hint: "The body must be a single SELECT (DuckDB dialect) over existing datasets.",
+          };
+        }
+        const result = st.addView(
+          { name: viewName, sql, ...(description ? { description } : {}) },
+          { origin: "agent", label: `Created view "${viewName}"` },
+        );
+        if (!result.ok) {
+          await ds.dropView(viewName).catch(() => undefined);
+          return toToolResult(result);
+        }
+        return toToolResult(result, {
+          name: viewName,
+          rowCount: meta.rowCount,
+          columns: meta.columns.map((c) => ({ column: c.name, type: c.type })),
+        });
+      },
+    }),
+    tool({
+      name: "remove_view",
+      description:
+        "Drop a view created with create_view (accepts the name with or " +
+        "without the view_ prefix). Tiles that used it will error until " +
+        "repointed.",
+      inputSchema: removeViewInput,
+      execute: async ({ name }) => {
+        const result = state().removeView(name, {
+          origin: "agent",
+          label: `Removed view "${name}"`,
+        });
+        if (!result.ok) return toToolResult(result);
+        if (ds.dropView) {
+          try {
+            await ds.dropView(normalizeViewName(name));
+          } catch {
+            /* doc registry is the source of truth; engine resyncs on load */
+          }
+        }
+        return toToolResult(result, { removed: true });
+      },
+    }),
   ];
 
   const contextTools: ToolDefinition[] = [
@@ -615,7 +975,8 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
       name: "get_dashboard_state",
       description:
         "Summary of the current dashboard: title, theme, global filters, " +
-        "and every tile's id/type/title/spec summary/layout. No data.",
+        "cross-filter, pages, calculated fields, views, and every ACTIVE-page " +
+        "tile's id/type/title/spec summary/layout. No data.",
       inputSchema: getDashboardStateInput,
       annotations: READ_ONLY,
       execute: () => {
@@ -624,6 +985,26 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
           title: doc.title,
           theme: doc.theme,
           filters: doc.filters,
+          ...(doc.crossFilter ? { crossFilter: doc.crossFilter } : {}),
+          activePageId: doc.activePageId,
+          pages: doc.pages.map((p) => ({
+            pageId: p.id,
+            name: p.name,
+            tileCount: p.tiles.length,
+            ...(p.id === doc.activePageId ? { active: true } : {}),
+          })),
+          ...(doc.calculatedFields.length > 0
+            ? {
+                calculatedFields: doc.calculatedFields.map((f) => ({
+                  name: f.name,
+                  dataset: f.dataset,
+                  kind: f.kind,
+                })),
+              }
+            : {}),
+          ...(doc.views.length > 0
+            ? { views: doc.views.map((v) => v.name) }
+            : {}),
           tiles: doc.tiles.map((t) => ({
             tileId: t.id,
             type: t.type,
@@ -633,6 +1014,7 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
             ...(t.annotations.length > 0
               ? { annotations: t.annotations.length }
               : {}),
+            ...(t.ignoreCrossFilter ? { ignoreCrossFilter: true } : {}),
           })),
         };
       },
@@ -650,7 +1032,12 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
       execute: () => {
         const s = state();
         const edits = pruneHumanEdits(s.recentHumanEdits, Date.now());
+        const activePage = s.doc.pages.find((p) => p.id === s.doc.activePageId);
         return {
+          ...(activePage
+            ? { activePage: { pageId: activePage.id, name: activePage.name } }
+            : {}),
+          ...(s.doc.crossFilter ? { crossFilter: s.doc.crossFilter } : {}),
           ...(s.selectedTileId ? { selectedTileId: s.selectedTileId } : {}),
           ...(s.brushedRange ? { brushedRange: s.brushedRange } : {}),
           ...(s.hoveredTileId ? { hoveredTileId: s.hoveredTileId } : {}),
@@ -679,7 +1066,36 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
         }
         return {
           ...describeTilePayload(tile),
-          data: await tileDataSummary(ds, tile),
+          data: await tileDataSummary(ds, tile, state().doc),
+        };
+      },
+    }),
+    tool({
+      name: "export_tile_data",
+      description:
+        "The tile's CURRENT data (all active filters applied) as CSV text: " +
+        "{csv, rowCount, truncated}. Default cap 500 rows (max 1000).",
+      inputSchema: exportTileDataInput,
+      annotations: READ_ONLY,
+      execute: async ({ tileId, limit }) => {
+        const tile = findTile(tileId);
+        if (!tile) {
+          return {
+            error: `No tile with id "${tileId}".`,
+            hint: "Use get_dashboard_state to list tiles.",
+          };
+        }
+        if (tile.type === "markdown") {
+          return { error: "Markdown tiles have no data to export." };
+        }
+        const res = await runTileQuery(ds, tile, state().doc, limit);
+        if (!res || "error" in res) {
+          return res ?? { error: "Tile has no query." };
+        }
+        return {
+          csv: toCSV(res.columns, res.rows),
+          rowCount: res.rowCount,
+          truncated: res.truncated,
         };
       },
     }),
@@ -814,7 +1230,7 @@ export function buildSelectedTileTools(
         }
         return {
           ...describeTilePayload(tile),
-          data: await tileDataSummary(ds, tile),
+          data: await tileDataSummary(ds, tile, doc),
           affectedByFilters: affectingFilters,
           ...(doc.filters.dateRange ? { dateRange: doc.filters.dateRange } : {}),
         };
@@ -839,9 +1255,22 @@ export const STATIC_TOOL_NAMES = [
   "set_theme",
   "set_dashboard_title",
   "add_annotation",
+  "set_tile_filters",
+  "set_cross_filter",
+  "clear_cross_filter",
+  "add_page",
+  "rename_page",
+  "remove_page",
+  "switch_page",
+  "create_calculated_field",
+  "list_calculated_fields",
+  "remove_calculated_field",
+  "create_view",
+  "remove_view",
   "get_dashboard_state",
   "get_user_focus",
   "describe_tile",
+  "export_tile_data",
   "get_activity_log",
 ] as const;
 
