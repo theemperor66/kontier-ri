@@ -1,4 +1,16 @@
-import * as duckdb from "@duckdb/duckdb-wasm";
+/// <reference path="./duckdb-browser-bundle.d.ts" />
+import type * as duckdb from "@duckdb/duckdb-wasm";
+
+/**
+ * Load the browser ESM bundle explicitly. The package's "." export resolves
+ * to dist/duckdb-node.cjs under the "node" condition, whose dynamic requires
+ * crash Turbopack's SSR chunking (and it is useless in the browser anyway).
+ */
+async function loadDuckDB(): Promise<typeof duckdb> {
+  return (await import(
+    "@duckdb/duckdb-wasm/dist/duckdb-browser.mjs"
+  )) as unknown as typeof duckdb;
+}
 import { applyRowCap, assertReadOnly, quoteIdent } from "./guard";
 import { buildStatsSQL, buildTopValuesSQL, shapeProfile } from "./profile";
 import type {
@@ -46,15 +58,16 @@ export class DuckDBDataSource implements DataSource {
 
   constructor(options: DuckDBDataSourceOptions = {}) {
     this.maxRows = options.maxRows ?? DEFAULT_MAX_ROWS;
-    this.logLevel = options.logLevel ?? duckdb.LogLevel.WARNING;
+    this.logLevel = options.logLevel ?? (3 satisfies duckdb.LogLevel); // WARNING
   }
 
   /** Lazy engine init (jsDelivr bundles + blob worker; browser only). */
   private getDB(): Promise<duckdb.AsyncDuckDB> {
     if (!this.dbPromise) {
       this.dbPromise = (async () => {
-        const bundles = duckdb.getJsDelivrBundles();
-        const bundle = await duckdb.selectBundle(bundles);
+        const mod = await loadDuckDB();
+        const bundles = mod.getJsDelivrBundles();
+        const bundle = await mod.selectBundle(bundles);
         if (!bundle.mainWorker) {
           throw new Error("DuckDB-WASM: no worker bundle available.");
         }
@@ -64,7 +77,7 @@ export class DuckDBDataSource implements DataSource {
           }),
         );
         const worker = new Worker(workerUrl);
-        const db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(this.logLevel), worker);
+        const db = new mod.AsyncDuckDB(new mod.ConsoleLogger(this.logLevel), worker);
         await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
         URL.revokeObjectURL(workerUrl);
         return db;
