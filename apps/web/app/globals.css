@@ -3,64 +3,27 @@
 
 @custom-variant dark (&:is(.dark *));
 
-:root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-}
-
-.dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.92 0.004 286.32);
-  --primary-foreground: oklch(0.21 0.006 285.885);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.552 0.016 285.938);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-}
-
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  /* Type stack - one sans for everything. Hierarchy comes from weight +
+     size + color, not font swaps. JetBrains Mono backs font-mono so IDs /
+     SQL / hashes render consistently across macOS / Windows / Linux
+     instead of falling back to system mono.
+
+     The next/font variables (--font-dm-sans / --font-jetbrains-mono, set
+     by app/layout.tsx) lead each stack; the trailing system families
+     guarantee a clean sans/mono anywhere the next/font class is absent. */
+  --font-sans:
+    var(--font-dm-sans, "DM Sans"), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono:
+    var(--font-jetbrains-mono, "JetBrains Mono"), ui-monospace, SFMono-Regular,
+    Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -84,6 +47,108 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  /* Kontier brand ink - stays #1b17ff in both modes so the logo and any
+     hard brand fill read as Kontier regardless of theme. */
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-primary-soft: var(--brand-primary-soft);
+  /* Agent co-presence ink - everything the AI agent "touches" (glow,
+     attribution chips, agent avatars, brushed-range chip) uses this one
+     color so agent activity is instantly scannable. Sits on the Kontier
+     chart-3 violet (hue 295) so it harmonizes with the chart inks while
+     staying clearly distinct from the brand blue reserved for human CTAs. */
+  --color-agent: var(--agent);
+}
+
+:root {
+  /* Color role guide:
+   *   --primary  → ONLY for primary CTAs and key brand fills.
+   *   --accent   → SELECTED state (current dropdown value, active combobox
+   *                row, selected table row). Primary-tinted, low chroma.
+   *                Never a solid CTA color.
+   *   --muted    → HOVER state (transient pointer feedback) and neutral
+   *                secondary surfaces (skeletons, disabled chrome).
+   *   --ring     → keyboard focus outline.
+   */
+  --radius: 0.5rem;
+  /* Page bg is the off-white surface, NOT pure white. Cards
+     (--card = pure white) sit on top and gain real contrast.
+     Anything that wants the white card surface should use bg-card,
+     not bg-background. */
+  --background: oklch(0.985 0.003 264);
+  --foreground: oklch(0.147 0.004 49.3);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.147 0.004 49.3);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.147 0.004 49.3);
+  --primary: oklch(0.488 0.243 264.376);
+  --primary-foreground: oklch(0.97 0.014 254.604);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.95 0.004 264);
+  /* 5.12:1 on bg-muted chips, 5.84:1 on cards. Never stack opacity
+     modifiers (text-muted-foreground/70) on muted text - that's how
+     2.5:1 captions happen. */
+  --muted-foreground: #6f615b;
+  --accent: oklch(0.955 0.022 264);
+  --accent-foreground: oklch(0.42 0.22 264);
+  /* 4.86:1 as text on the destructive/10 tint, 6.12:1 under white text
+     on solid fills. */
+  --destructive: #c70008;
+  /* Hairlines live in the same blue-black family as the surfaces
+     (hue 264). Warm-gray borders against cool surfaces read muddy
+     instead of crisp. */
+  --border: oklch(0.918 0.007 264);
+  --input: oklch(0.918 0.007 264);
+  --ring: oklch(0.714 0.014 41.2);
+  /* Chart series ink. Series 1 is the brand blue (same ink as
+     --primary); companions are hue-spaced at comparable lightness so
+     multi-series charts separate by hue, not by how faint they are. */
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.56 0.11 192);
+  --chart-3: oklch(0.55 0.15 295);
+  --chart-4: oklch(0.62 0.13 75);
+  --chart-5: oklch(0.45 0.03 264);
+  /* Brand ink - identical in both modes. */
+  --brand-primary: #1b17ff;
+  --brand-primary-soft: #4f4bff;
+  /* Agent violet - light mode needs the darker ink so chip text clears
+     AA on the /10 tint. */
+  --agent: oklch(0.5 0.19 295);
+}
+
+.dark {
+  --background: oklch(0.147 0.004 49.3);
+  --foreground: oklch(0.986 0.002 67.8);
+  --card: oklch(0.214 0.009 43.1);
+  --card-foreground: oklch(0.986 0.002 67.8);
+  --popover: oklch(0.214 0.009 43.1);
+  --popover-foreground: oklch(0.986 0.002 67.8);
+  /* Refined primary for dark mode - slightly less chroma + lightness
+     than the raw vivid blue so it sits in the muted UI without
+     screaming. */
+  --primary: oklch(0.58 0.16 263);
+  --primary-foreground: oklch(0.98 0.005 263);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.32 0.012 264);
+  --muted-foreground: oklch(0.714 0.014 41.2);
+  --accent: oklch(0.36 0.07 264);
+  --accent-foreground: oklch(0.88 0.1 264);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.58 0.16 263);
+  /* Same hue family as light mode, lifted for dark surfaces - the
+     light-mode inks at L≈0.5 sink into a near-black background. */
+  --chart-1: oklch(0.62 0.18 263);
+  --chart-2: oklch(0.7 0.11 192);
+  --chart-3: oklch(0.7 0.13 295);
+  --chart-4: oklch(0.75 0.13 80);
+  --chart-5: oklch(0.7 0.02 264);
+  --brand-primary: #1b17ff;
+  --brand-primary-soft: #4f4bff;
+  /* Lifted like the chart inks so agent chips stay readable on dark. */
+  --agent: oklch(0.72 0.15 295);
 }
 
 @layer base {
@@ -93,28 +158,40 @@
   body {
     @apply bg-background text-foreground;
     overflow-x: clip;
+    /* Tabular numerics on by default: KPI values, money columns and
+       table cells align column-wise without per-component opt-in.
+       DM Sans supports `tnum`. */
+    font-feature-settings:
+      "tnum" 1,
+      "cv11" 1;
   }
 }
 
 
 /* --- Kontier RI: co-presence + canvas ------------------------------------ */
 
-/* Glow pulse on tiles the agent just touched. */
+/* Glow pulse on tiles the agent just touched (agent violet). */
 @keyframes agent-glow {
   0% {
-    box-shadow: 0 0 0 1px oklch(0.62 0.21 292 / 70%), 0 0 24px 2px oklch(0.62 0.21 292 / 35%);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--agent) 70%, transparent),
+      0 0 24px 2px color-mix(in oklab, var(--agent) 35%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 1px oklch(0.62 0.21 292 / 45%), 0 0 16px 1px oklch(0.62 0.21 292 / 18%);
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--agent) 45%, transparent),
+      0 0 16px 1px color-mix(in oklab, var(--agent) 18%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 1px oklch(0.62 0.21 292 / 0%), 0 0 0 0 oklch(0.62 0.21 292 / 0%);
+    box-shadow:
+      0 0 0 1px transparent,
+      0 0 0 0 transparent;
   }
 }
 
 .agent-touched {
   animation: agent-glow 2.4s ease-out 2;
-  border-color: oklch(0.62 0.21 292 / 55%) !important;
+  border-color: color-mix(in oklab, var(--agent) 55%, transparent) !important;
 }
 
 /* Attribution chip fade-out. */
@@ -168,4 +245,15 @@
 .recharts-brush-texts text {
   fill: var(--muted-foreground);
   font-size: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -1,7 +1,25 @@
 import type { Metadata } from "next";
+import { DM_Sans, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { withBasePath } from "@/lib/base-path";
 import "./globals.css";
+
+// Kontier type stack - one sans for everything (hierarchy by weight +
+// size + color, not font swaps). DM Sans covers body, headings, KPI
+// values; JetBrains Mono backs IDs / SQL / code so 0/O/1/l stay
+// unambiguous at small sizes. globals.css wraps these variables with
+// full fallback stacks (--font-sans / --font-mono in @theme).
+const dmSans = DM_Sans({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
 
 const TITLE = "Kontier RI — build revenue dashboards with your AI agent";
 const DESCRIPTION =
@@ -34,7 +52,11 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${dmSans.variable} ${jetbrainsMono.variable} font-sans`}
+    >
       <body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           {children}
