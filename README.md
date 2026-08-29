@@ -102,6 +102,13 @@ modify and self-host; if you offer a modified version as a network service,
 you share your changes under the same terms. That keeps an analytics studio —
 software that typically runs as a service — honestly open.
 
+### Trademark
+
+The **"Kontier" name and logo are trademarks of the project owner** and are
+used here with permission. The AGPL-3.0 license covers the code, not the
+brand: forks and redistributions must not use the Kontier name or logo in a
+way that suggests endorsement or origin.
+
 ## Built by a billing SaaS team
 
 We build [Kontier](https://kontier.eu), a billing/subscription SaaS. Kontier RI
