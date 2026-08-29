@@ -13,4 +13,4 @@ raw data never leaves the browser — SQL runs locally via DuckDB-WASM.
 See [docs/PLAN.md](docs/PLAN.md) for architecture and roadmap.
 
 ## License
-Apache-2.0
+AGPL-3.0 — the same license family as Grafana and Metabase's core. Free to use, study, modify and self-host; if you offer a modified version as a service, you must share your changes under the same terms.

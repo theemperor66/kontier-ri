@@ -15,7 +15,7 @@ Challenge (deadline 2026-09-03 13:00 PDT), designed to be merged into Kontier
   the page; the agent only sees aggregates it explicitly queries.
 
 ## Hard constraints (from challenge rules)
-- Public GitHub repo, Apache-2.0, license visible in About section.
+- Public GitHub repo, AGPL-3.0 (OSI-approved), license visible in About section.
 - Repo must contain everything needed to run the project. NO Kontier code.
 - Live URL testable in ChatGPT in-app browser and Chrome 149+ with
   chrome://flags/#enable-webmcp-testing.
