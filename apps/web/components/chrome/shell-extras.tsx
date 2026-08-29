@@ -14,6 +14,7 @@ import { CommandPalette } from "@/components/chrome/command-palette";
 import { DashboardManager } from "@/components/chrome/dashboard-manager";
 import { TemplatesGallery } from "@/components/chrome/templates-gallery";
 import { DashboardPersistence } from "@/components/chrome/dashboard-persistence";
+import { SelectionToolbar } from "@/components/chrome/selection-toolbar";
 
 function isEditableTarget(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
@@ -72,6 +73,7 @@ export function ShellExtras() {
       <DashboardPersistence />
       <PresentationHotkeys />
       <PresentationExit />
+      <SelectionToolbar />
       <CommandPalette />
       <DashboardManager />
       <TemplatesGallery />

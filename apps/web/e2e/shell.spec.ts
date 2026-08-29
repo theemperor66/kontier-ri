@@ -131,6 +131,13 @@ test("cross-filter: clicking a tile value sets the chip; clearing restores", asy
 
   await page.getByTestId("clear-cross-filter").click();
   await expect(chip).toHaveCount(0);
+
+  // Selecting the table shows the selection toolbar; CSV export downloads.
+  await table.click();
+  await expect(page.getByTestId("selection-toolbar")).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByTestId("export-tile-csv").click();
+  expect((await download).suggestedFilename()).toBe("recent-failed-charges.csv");
 });
 
 test("uploaded dataset does not survive reload; tile explains re-upload", async ({
