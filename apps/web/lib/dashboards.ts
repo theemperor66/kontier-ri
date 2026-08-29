@@ -30,6 +30,33 @@ export function loadDocIntoStore(doc: DashboardDoc): void {
   void syncViewsToDataSource(dataSource, doc.views ?? []);
 }
 
+// ---------------------------------------------------------------------------
+// Debounced autosave (single module-level timer so switch/delete can flush
+// pending edits BEFORE the current dashboard changes — no lost keystrokes)
+// ---------------------------------------------------------------------------
+
+export const SAVE_DEBOUNCE_MS = 400;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Debounce-save the store doc under the current dashboard id. */
+export function schedulePersist(): void {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(persistNow, SAVE_DEBOUNCE_MS);
+}
+
+function persistNow(): void {
+  saveTimer = null;
+  const id = currentDashboardId();
+  if (id) saveDashboardDoc(id, useDashboardStore.getState().doc);
+}
+
+/** Persist immediately (dashboard switch / delete / page unload). */
+export function flushPersist(): void {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  persistNow();
+}
+
 export const INDEX_KEY = "kontier-ri.dashboards.index.v1";
 export const DOC_KEY_PREFIX = "kontier-ri.dashboard.";
 /** Single-doc keys used by pre-manager builds (adopted as "My dashboard"). */
@@ -196,6 +223,7 @@ export function setCurrentDashboard(id: string): void {
 
 /** Create a new dashboard from `doc` (or blank), select it, load it. */
 export function createDashboard(doc?: DashboardDoc): string {
+  flushPersist();
   const id = genDashboardId();
   const next = doc ?? createInitialDoc();
   saveDashboardDoc(id, next);
@@ -230,6 +258,7 @@ export function renameDashboard(id: string, name: string): void {
 export function deleteDashboard(id: string): void {
   const s = storage();
   if (!s) return;
+  flushPersist();
   s.removeItem(DOC_KEY_PREFIX + id);
   const index = readIndex();
   index.entries = index.entries.filter((e) => e.id !== id);
@@ -248,6 +277,7 @@ export function deleteDashboard(id: string): void {
 
 /** Switch the active dashboard (persists selection, replaces store doc). */
 export function switchDashboard(id: string): boolean {
+  flushPersist();
   const doc = readDashboardDoc(id);
   if (!doc) return false;
   setCurrentDashboard(id);
@@ -260,6 +290,7 @@ export function switchDashboard(id: string): boolean {
  * when it is still empty, otherwise creates a new dashboard entry.
  */
 export function openDocAsDashboard(doc: DashboardDoc): void {
+  flushPersist();
   const state = useDashboardStore.getState();
   const currentId = currentDashboardId();
   if (currentId && state.doc.tiles.length === 0) {

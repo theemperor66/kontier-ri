@@ -2,10 +2,11 @@
 
 /**
  * P0 persistence: rehydrate the active dashboard from localStorage on boot,
- * then debounce-save the doc on every store mutation. Uploaded datasets live
- * in in-memory DuckDB and cannot survive a reload — the datasource seam
- * (lib/datasource.tsx) rewrites missing-table errors into a clear
- * "re-upload" message, so restored tiles never spin forever.
+ * then debounce-save the doc on every store mutation (debounce lives in
+ * lib/dashboards.ts so switch/delete can flush pending edits first).
+ * Uploaded datasets live in in-memory DuckDB and cannot survive a reload —
+ * the datasource seam (lib/datasource.tsx) rewrites missing-table errors
+ * into a clear "re-upload" message, so restored tiles never spin forever.
  */
 
 import { useEffect, useRef } from "react";
@@ -14,13 +15,11 @@ import { useDashboardStore } from "@/lib/dashboard-store";
 import { dataSource, useDataSource } from "@/lib/datasource";
 import {
   bootPersistence,
-  currentDashboardId,
+  flushPersist,
   openDocAsDashboard,
-  saveDashboardDoc,
+  schedulePersist,
 } from "@/lib/dashboards";
 import { clearShareHash, readShareURL } from "@/lib/share-url";
-
-const SAVE_DEBOUNCE_MS = 400;
 
 export function DashboardPersistence() {
   const booted = useRef(false);
@@ -50,27 +49,17 @@ export function DashboardPersistence() {
       clearShareHash();
     }
 
-    let timer: ReturnType<typeof setTimeout> | null = null;
     let lastDoc = useDashboardStore.getState().doc;
     const unsubscribe = useDashboardStore.subscribe((state) => {
       if (state.doc === lastDoc) return;
       lastDoc = state.doc;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        const id = currentDashboardId();
-        if (id) saveDashboardDoc(id, useDashboardStore.getState().doc);
-      }, SAVE_DEBOUNCE_MS);
+      schedulePersist();
     });
-    const flush = () => {
-      if (timer) clearTimeout(timer);
-      const id = currentDashboardId();
-      if (id) saveDashboardDoc(id, useDashboardStore.getState().doc);
-    };
-    window.addEventListener("beforeunload", flush);
+    window.addEventListener("beforeunload", flushPersist);
     return () => {
       unsubscribe();
-      window.removeEventListener("beforeunload", flush);
-      flush();
+      window.removeEventListener("beforeunload", flushPersist);
+      flushPersist();
     };
   }, []);
 
