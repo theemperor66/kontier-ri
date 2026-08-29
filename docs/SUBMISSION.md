@@ -79,7 +79,7 @@ guard. Monorepo: `packages/datasource` (DataSource interface + DuckDB-WASM),
 - [x] README: hero shots, quickstart, tool table, architecture, Kontier story
 - [x] OG meta tags + favicon (judges share links) — og.png 1200x630 rendered
       from the live demo; twitter summary_large_image; chart-glyph icon.svg
-- [ ] Suggested agent prompts in the empty state (guide judges to the wow path)
+- [x] Suggested agent prompts in the empty state (guide judges to the wow path)
 
 ## Fallback live URL (while Vercel auth is pending)
 GitHub Pages: https://theemperor66.github.io/kontier-ri/ — deployed on every
