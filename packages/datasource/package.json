@@ -1,0 +1,24 @@
+{
+  "name": "@kontier-ri/datasource",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.31.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "^4.1.2"
+  }
+}
