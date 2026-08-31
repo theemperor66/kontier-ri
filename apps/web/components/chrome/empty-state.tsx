@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import {
   CursorClick,
+  Database,
   Layout,
   Robot,
   Sparkle,
@@ -11,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useDataSource } from "@/lib/datasource";
+import { useScaleDemo } from "@/lib/scale-demo";
 import { useUiState } from "@/lib/ui-state";
 
 const SUGGESTED_PROMPTS = [
@@ -23,6 +25,7 @@ const SUGGESTED_PROMPTS = [
 export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
   const { importFiles, status } = useDataSource();
   const setTemplatesOpen = useUiState((s) => s.setTemplatesOpen);
+  const scaleDemo = useScaleDemo();
   const fileRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -63,6 +66,15 @@ export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
           >
             <Layout className="size-4" />
             Templates
+          </Button>
+          <Button
+            variant="outline"
+            data-testid="load-scale-demo"
+            disabled={status !== "ready" || scaleDemo.loading}
+            onClick={scaleDemo.load}
+          >
+            <Database className="size-4" />
+            {scaleDemo.loading ? "Counting 100M rows…" : "Load 100M-row live demo"}
           </Button>
           <Button
             variant="outline"
