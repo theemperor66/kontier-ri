@@ -344,6 +344,7 @@ export interface ActionOk {
   ok: true;
   tileId?: string;
   pageId?: string;
+  insightId?: string;
 }
 
 export interface ActionConflict {
@@ -405,6 +406,76 @@ export interface ActivityEntry {
   undone: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Agent presence (docs/TOOLS.md Group 6) — ephemeral co-working state.
+// NOT part of DashboardDoc: never in undo history, never persisted, cleared
+// on doc switch (resetDashboard). Changes ARE activity-logged.
+// ---------------------------------------------------------------------------
+
+export type PlanStepStatus = "pending" | "active" | "done" | "failed";
+
+export interface PlanStep {
+  label: string;
+  status: PlanStepStatus;
+}
+
+/** The agent's shared working plan (rendered as the floating plan card). */
+export interface AgentPlan {
+  title?: string;
+  steps: PlanStep[];
+  /** epoch ms of the last present_plan / update_plan_step call. */
+  updatedAt: number;
+}
+
+export type InsightSeverity = "info" | "warn" | "critical";
+export type InsightState = "proposed" | "accepted" | "dismissed";
+
+/**
+ * Action executed through the EXISTING command layer (origin "agent",
+ * undoable) when the user accepts an insight. Validated strictly against
+ * schemas.suggestedActionSchema at propose time.
+ */
+export type SuggestedAction =
+  | {
+      kind: "add_annotation";
+      payload: { tileId: string; text: string; anchor?: Annotation["anchor"] };
+    }
+  | { kind: "add_tile"; payload: AddTileInput }
+  | { kind: "set_filter"; payload: GlobalFilter };
+
+export interface Insight {
+  id: string;
+  title: string;
+  body: string;
+  severity: InsightSeverity;
+  /** Tile the insight is about (must exist at propose time). */
+  tileId?: string;
+  suggestedAction?: SuggestedAction;
+  state: InsightState;
+  /** epoch ms */
+  at: number;
+}
+
+export interface PresenceState {
+  plan: AgentPlan | null;
+  insights: Insight[];
+}
+
+export interface PresentPlanInput {
+  title?: string;
+  /** Steps default to status "pending". */
+  steps: { label: string; status?: PlanStepStatus }[];
+}
+
+export interface ProposeInsightInput {
+  title: string;
+  body: string;
+  /** Default "info". */
+  severity?: InsightSeverity;
+  tileId?: string;
+  suggestedAction?: SuggestedAction;
+}
+
 /** Undo/redo snapshot: the document as it was BEFORE/AFTER the command. */
 export interface HistoryEntry {
   id: string;
@@ -426,6 +497,12 @@ export interface DashboardStore {
   recentHumanEdits: HumanEdit[];
   /** tileId -> epoch ms of the last agent mutation (drives glow animation). */
   agentPulse: Record<string, number>;
+
+  /**
+   * Agent presence (plan card + insight tray) — ephemeral: not undoable,
+   * not persisted, cleared by resetDashboard. Activity-logged.
+   */
+  presence: PresenceState;
 
   // selection / focus (not undoable — pure UI state)
   selectedTileId: string | null;
@@ -480,6 +557,18 @@ export interface DashboardStore {
   removeCalculatedField(name: string, meta: ActionMeta): ActionResult;
   addView(view: ViewDef, meta: ActionMeta): ActionResult;
   removeView(name: string, meta: ActionMeta): ActionResult;
+
+  // presence commands (activity-logged but NOT undoable — ephemeral state)
+  presentPlan(input: PresentPlanInput): ActionResult;
+  updatePlanStep(index: number, status: PlanStepStatus): ActionResult;
+  clearPlan(): ActionResult;
+  proposeInsight(input: ProposeInsightInput): ActionResult;
+  /**
+   * Accept executes the insight's suggestedAction through the normal
+   * command layer (origin "agent", undoable); the state flip itself is not.
+   */
+  acceptInsight(id: string): ActionResult;
+  dismissInsight(id: string): ActionResult;
 
   undo(): ActionResult;
   redo(): ActionResult;

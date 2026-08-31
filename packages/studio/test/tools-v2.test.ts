@@ -130,9 +130,9 @@ beforeEach(() => {
 });
 
 describe("v2 tool inventory", () => {
-  it("registers 32 static tools incl. the 13 new ones", () => {
+  it("registers 36 static tools incl. the 13 v2 + 4 presence ones", () => {
     expect([...tools.keys()]).toEqual([...STATIC_TOOL_NAMES]);
-    expect(tools.size).toBe(32);
+    expect(tools.size).toBe(36);
     for (const name of [
       "set_tile_filters",
       "set_cross_filter",

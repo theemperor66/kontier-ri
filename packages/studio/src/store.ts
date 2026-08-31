@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import * as z from "zod";
 import { assertSelectOnly, ReadOnlySQLError } from "@kontier-ri/datasource";
 import type {
   ActionConflict,
@@ -17,7 +18,12 @@ import type {
   GlobalFilter,
   HistoryEntry,
   HumanEdit,
+  Insight,
   Page,
+  PlanStepStatus,
+  PresenceState,
+  PresentPlanInput,
+  ProposeInsightInput,
   ThemeSettings,
   Tile,
   TileFilter,
@@ -28,6 +34,7 @@ import type {
 } from "./types";
 import { GRID_COLUMNS } from "./types";
 import { migrateDoc, withActivePageMirror } from "./migrate";
+import { suggestedActionSchema } from "./schemas";
 
 /** Conflict window: agent may not silently overwrite newer human edits. */
 export const HUMAN_EDIT_WINDOW_MS = 10 * 60_000;
@@ -38,6 +45,12 @@ export const MAX_HISTORY = 100;
 export const DASHBOARD_SCOPE = "__dashboard__";
 /** Views created through the doc registry are namespaced with this prefix. */
 export const VIEW_PREFIX = "view_";
+/** Insight tray cap: oldest insights drop off past this. */
+export const MAX_INSIGHTS = 30;
+
+export function createInitialPresence(): PresenceState {
+  return { plan: null, insights: [] };
+}
 
 export const DEFAULT_TILE_SIZE: Record<TileType, { w: number; h: number }> = {
   kpi: { w: 3, h: 2 },
@@ -278,6 +291,25 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
     error: `No page with id "${pageId}". Use get_dashboard_state to list pages.`,
   });
 
+  /**
+   * Activity-only log for ephemeral presence events: appears in the feed,
+   * pushes NO undo entry (presence is not part of the document).
+   */
+  function logPresence(label: string): void {
+    set((s) => ({
+      activityLog: [
+        {
+          id: genId("cmd"),
+          by: "agent" as const,
+          label,
+          at: Date.now(),
+          undone: false,
+        },
+        ...s.activityLog,
+      ].slice(0, MAX_ACTIVITY),
+    }));
+  }
+
   return {
     doc: createInitialDoc(),
     undoStack: [],
@@ -285,6 +317,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
     activityLog: [],
     recentHumanEdits: [],
     agentPulse: {},
+    presence: createInitialPresence(),
     selectedTileId: null,
     brushedRange: null,
     hoveredTileId: null,
@@ -665,6 +698,185 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
       });
     },
 
+    // -- agent presence (ephemeral: no undo entries; activity-logged) --------
+
+    presentPlan(input: PresentPlanInput): ActionResult {
+      if (input.steps.length === 0) {
+        return { ok: false, error: "A plan needs at least one step." };
+      }
+      const plan = {
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        steps: input.steps.map((st) => ({
+          label: st.label,
+          status: st.status ?? ("pending" as const),
+        })),
+        updatedAt: Date.now(),
+      };
+      set((s) => ({ presence: { ...s.presence, plan } }));
+      logPresence(
+        input.title !== undefined
+          ? `Agent shared a plan: “${input.title}”`
+          : "Agent shared a plan",
+      );
+      return { ok: true };
+    },
+
+    updatePlanStep(index: number, status: PlanStepStatus): ActionResult {
+      const plan = get().presence.plan;
+      if (!plan) {
+        return {
+          ok: false,
+          error: "No plan is shared. Call present_plan first.",
+        };
+      }
+      if (!Number.isInteger(index) || index < 0 || index >= plan.steps.length) {
+        return {
+          ok: false,
+          error: `Step index ${index} is out of range (0..${plan.steps.length - 1}).`,
+        };
+      }
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          plan: {
+            ...plan,
+            steps: plan.steps.map((st, i) =>
+              i === index ? { ...st, status } : st,
+            ),
+            updatedAt: Date.now(),
+          },
+        },
+      }));
+      return { ok: true };
+    },
+
+    clearPlan(): ActionResult {
+      if (!get().presence.plan) {
+        return { ok: false, error: "No plan is shared." };
+      }
+      set((s) => ({ presence: { ...s.presence, plan: null } }));
+      logPresence("Agent cleared its plan");
+      return { ok: true };
+    },
+
+    proposeInsight(input: ProposeInsightInput): ActionResult {
+      if (input.tileId && !getTile(input.tileId)) {
+        return notFound(input.tileId);
+      }
+      if (input.suggestedAction) {
+        const parsed = suggestedActionSchema.safeParse(input.suggestedAction);
+        if (!parsed.success) {
+          return {
+            ok: false,
+            error: `Invalid suggestedAction: ${z.prettifyError(parsed.error)}`,
+          };
+        }
+        if (
+          parsed.data.kind === "add_annotation" &&
+          !getTile(parsed.data.payload.tileId)
+        ) {
+          return notFound(parsed.data.payload.tileId);
+        }
+      }
+      const insight: Insight = {
+        id: genId("ins"),
+        title: input.title,
+        body: input.body,
+        severity: input.severity ?? "info",
+        ...(input.tileId ? { tileId: input.tileId } : {}),
+        ...(input.suggestedAction
+          ? { suggestedAction: input.suggestedAction }
+          : {}),
+        state: "proposed",
+        at: Date.now(),
+      };
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          insights: [...s.presence.insights, insight].slice(-MAX_INSIGHTS),
+        },
+      }));
+      logPresence(`Insight proposed: “${input.title}”`);
+      return { ok: true, insightId: insight.id };
+    },
+
+    acceptInsight(id: string): ActionResult {
+      const insight = get().presence.insights.find((i) => i.id === id);
+      if (!insight) return { ok: false, error: `No insight with id "${id}".` };
+      if (insight.state !== "proposed") {
+        return {
+          ok: false,
+          error: `Insight "${insight.title}" was already ${insight.state}.`,
+        };
+      }
+      let result: ActionResult = { ok: true };
+      const action = insight.suggestedAction;
+      if (action) {
+        // Execute through the EXISTING command layer: attributed to the
+        // agent (glow + AI chip) and fully undoable like any agent edit.
+        const meta: ActionMeta = {
+          origin: "agent",
+          label: `Insight accepted: “${insight.title}”`,
+        };
+        if (action.kind === "add_annotation") {
+          result = get().addAnnotation(
+            action.payload.tileId,
+            action.payload.text,
+            action.payload.anchor,
+            meta,
+          );
+        } else if (action.kind === "add_tile") {
+          const payload = action.payload;
+          const input =
+            payload.type === "markdown"
+              ? {
+                  ...payload,
+                  spec: {
+                    ...payload.spec,
+                    // Same raw-HTML strip as the add_tile tool applies.
+                    content: payload.spec.content.replace(/<[^>]*>/g, ""),
+                  },
+                }
+              : payload;
+          result = get().addTile(input, meta);
+        } else {
+          result = get().setFilter(action.payload, meta);
+        }
+        if (!result.ok) return result; // stays proposed; user can retry
+      }
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          insights: s.presence.insights.map((i) =>
+            i.id === id ? { ...i, state: "accepted" as const } : i,
+          ),
+        },
+      }));
+      if (!action) logPresence(`Insight accepted: “${insight.title}”`);
+      return { ...result, insightId: id };
+    },
+
+    dismissInsight(id: string): ActionResult {
+      const insight = get().presence.insights.find((i) => i.id === id);
+      if (!insight) return { ok: false, error: `No insight with id "${id}".` };
+      if (insight.state !== "proposed") {
+        return {
+          ok: false,
+          error: `Insight "${insight.title}" was already ${insight.state}.`,
+        };
+      }
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          insights: s.presence.insights.map((i) =>
+            i.id === id ? { ...i, state: "dismissed" as const } : i,
+          ),
+        },
+      }));
+      logPresence(`Insight dismissed: “${insight.title}”`);
+      return { ok: true, insightId: id };
+    },
+
     undo(): ActionResult {
       const s = get();
       const entry = s.undoStack[s.undoStack.length - 1];
@@ -726,6 +938,9 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
         activityLog: [],
         recentHumanEdits: [],
         agentPulse: {},
+        // Presence is scoped to the working session on ONE doc: a doc
+        // switch/load drops the plan card and any pending insights.
+        presence: createInitialPresence(),
         selectedTileId: null,
         brushedRange: null,
         hoveredTileId: null,

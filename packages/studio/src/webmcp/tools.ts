@@ -12,6 +12,7 @@ import {
   addTileInput,
   clearCrossFilterInput,
   clearGlobalFiltersInput,
+  clearPlanInput,
   createCalculatedFieldInput,
   createViewInput,
   describeTileInput,
@@ -25,7 +26,9 @@ import {
   listCalculatedFieldsInput,
   listDatasetsInput,
   moveTileInput,
+  presentPlanInput,
   profileColumnInput,
+  proposeInsightInput,
   removeCalculatedFieldInput,
   removePageInput,
   removeTileInput,
@@ -43,6 +46,7 @@ import {
   switchPageInput,
   tileSpecPatchSchemas,
   tileSpecSchemas,
+  updatePlanStepInput,
   updateTileInput,
 } from "../schemas";
 import { normalizeViewName, pruneHumanEdits, useDashboardStore } from "../store";
@@ -56,6 +60,7 @@ import type {
   AddTileInput,
   DashboardDoc,
   DashboardStore,
+  ProposeInsightInput,
   Tile,
   TilePatch,
 } from "../types";
@@ -168,6 +173,7 @@ function toToolResult(
       ok: true,
       ...(result.tileId ? { tileId: result.tileId } : {}),
       ...(result.pageId ? { pageId: result.pageId } : {}),
+      ...(result.insightId ? { insightId: result.insightId } : {}),
       ...extra,
     };
   }
@@ -1117,7 +1123,63 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
     }),
   ];
 
-  return [...dataTools, ...buildTools, ...contextTools];
+  // -- group 6: agent presence (plan card / insight tray / agent cursor) ----
+
+  const presenceTools: ToolDefinition[] = [
+    tool({
+      name: "present_plan",
+      description:
+        "Show the user your working plan as a floating plan card: {title?, " +
+        "steps: [{label, status?: pending|active|done|failed}]}. Calling it " +
+        "again replaces the plan. Keep steps short; update progress with " +
+        "update_plan_step while you work so the user can follow along.",
+      inputSchema: presentPlanInput,
+      execute: ({ title, steps }) =>
+        toToolResult(
+          state().presentPlan({
+            ...(title !== undefined ? { title } : {}),
+            steps,
+          }),
+          { steps: steps.length },
+        ),
+    }),
+    tool({
+      name: "update_plan_step",
+      description:
+        "Set the status of ONE step of your shared plan: {index (0-based), " +
+        "status: pending|active|done|failed}. Mark a step active before " +
+        "starting it and done right after finishing it.",
+      inputSchema: updatePlanStepInput,
+      execute: ({ index, status }) =>
+        toToolResult(state().updatePlanStep(index, status), { index, status }),
+    }),
+    tool({
+      name: "propose_insight",
+      description:
+        "Surface a finding to the user as an insight chip: {title, body, " +
+        "severity?: info|warn|critical, tileId?, suggestedAction?}. " +
+        "suggestedAction is {kind: add_annotation|add_tile|set_filter, " +
+        "payload} (payloads match the corresponding tools) and runs ONLY " +
+        "when the user clicks Accept — undoable, attributed to you. " +
+        "Nothing is applied on propose.",
+      inputSchema: proposeInsightInput,
+      execute: (input) => {
+        const result = state().proposeInsight(input as ProposeInsightInput);
+        return toToolResult(
+          result,
+          result.ok ? { state: "proposed" } : {},
+        );
+      },
+    }),
+    tool({
+      name: "clear_plan",
+      description: "Remove your shared plan card from the dashboard.",
+      inputSchema: clearPlanInput,
+      execute: () => toToolResult(state().clearPlan()),
+    }),
+  ];
+
+  return [...dataTools, ...buildTools, ...contextTools, ...presenceTools];
 }
 
 // ---------------------------------------------------------------------------
@@ -1272,6 +1334,10 @@ export const STATIC_TOOL_NAMES = [
   "describe_tile",
   "export_tile_data",
   "get_activity_log",
+  "present_plan",
+  "update_plan_step",
+  "propose_insight",
+  "clear_plan",
 ] as const;
 
 export const DYNAMIC_TOOL_NAMES = [

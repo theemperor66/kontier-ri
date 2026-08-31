@@ -225,7 +225,7 @@ describe("JSON Schema generation", () => {
   ];
 
   it("every tool schema converts via z.toJSONSchema to a strict object", () => {
-    expect(defs).toHaveLength(35);
+    expect(defs).toHaveLength(39);
     for (const def of defs) {
       const js = z.toJSONSchema(def.inputSchema) as Record<string, unknown>;
       expect(js["type"], def.name).toBe("object");

@@ -420,3 +420,93 @@ export const exportTileDataInput = z
     limit: z.number().int().min(1).max(1000).default(500),
   })
   .strict();
+
+// --- tool inputs: Group 6 (agent presence — plan card / insight tray) -------
+
+export const planStepStatusSchema = z.enum([
+  "pending",
+  "active",
+  "done",
+  "failed",
+]);
+export const insightSeveritySchema = z.enum(["info", "warn", "critical"]);
+
+export const planStepInputSchema = z
+  .object({
+    label: z.string().min(1).max(120),
+    /** Defaults to "pending" in the store. */
+    status: planStepStatusSchema.optional(),
+  })
+  .strict();
+
+export const presentPlanInput = z
+  .object({
+    title: z.string().min(1).max(120).optional(),
+    steps: z.array(planStepInputSchema).min(1).max(12),
+  })
+  .strict();
+
+export const updatePlanStepInput = z
+  .object({
+    /** 0-based index into the shared plan's steps. */
+    index: z.number().int().min(0).max(11),
+    status: planStepStatusSchema,
+  })
+  .strict();
+
+export const clearPlanInput = emptyInput;
+
+/**
+ * Strict suggested-action shape for propose_insight. Executed through the
+ * EXISTING command layer (origin "agent", undoable) only when the user
+ * clicks Accept — never on propose.
+ */
+export const suggestedActionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("add_annotation"),
+      payload: z
+        .object({
+          tileId: z.string().min(1),
+          text: z.string().min(1).max(1000),
+          anchor: z
+            .object({
+              x: z.union([z.string(), z.number()]).optional(),
+              seriesKey: z.string().min(1).optional(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("add_tile"),
+      /** Same shape as the add_tile tool input (spec re-checked per type). */
+      payload: addTileInput,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("set_filter"),
+      payload: z
+        .object({
+          column: z.string().min(1),
+          op: filterOpSchema,
+          value: filterValueSchema,
+        })
+        .strict(),
+    })
+    .strict(),
+]);
+
+export const proposeInsightInput = z
+  .object({
+    title: z.string().min(1).max(120),
+    body: z.string().min(1).max(600),
+    severity: insightSeveritySchema.default("info"),
+    tileId: z.string().min(1).optional(),
+    suggestedAction: suggestedActionSchema.optional(),
+  })
+  .strict();

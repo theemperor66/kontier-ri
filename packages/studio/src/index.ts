@@ -3,6 +3,7 @@ export * from "./types";
 export {
   useDashboardStore,
   createInitialDoc,
+  createInitialPresence,
   autoLayout,
   genId,
   pruneHumanEdits,
@@ -12,6 +13,7 @@ export {
   HUMAN_EDIT_WINDOW_MS,
   MAX_ACTIVITY,
   MAX_HISTORY,
+  MAX_INSIGHTS,
   DASHBOARD_SCOPE,
   DEFAULT_TILE_SIZE,
   VIEW_PREFIX,
