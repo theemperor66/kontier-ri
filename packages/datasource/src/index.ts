@@ -27,3 +27,9 @@ export {
   sanitizeDatasetName,
 } from "./duckdb";
 export type { DuckDBDataSourceOptions } from "./duckdb";
+export {
+  NET_STATS_CHANNEL,
+  buildNetStatsPreamble,
+  subscribeNetStats,
+} from "./net-stats";
+export type { NetStatsMessage } from "./net-stats";

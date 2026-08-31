@@ -12,6 +12,7 @@ async function loadDuckDB(): Promise<typeof duckdb> {
   )) as unknown as typeof duckdb;
 }
 import { applyRowCap, assertReadOnly, assertSelectOnly, quoteIdent } from "./guard";
+import { buildNetStatsPreamble } from "./net-stats";
 import { buildStatsSQL, buildTopValuesSQL, shapeProfile } from "./profile";
 import type {
   ColumnMeta,
@@ -150,7 +151,10 @@ export class DuckDBDataSource implements DataSource {
           throw new Error("DuckDB-WASM: no worker bundle available.");
         }
         const workerUrl = URL.createObjectURL(
-          new Blob([`importScripts("${bundle.mainWorker}");`], {
+          // The net-stats preamble instruments the worker's XHRs so remote
+          // parquet reads can report fetched bytes (see net-stats.ts). It is
+          // defensively written and degrades to a no-op on any mismatch.
+          new Blob([buildNetStatsPreamble(), `importScripts("${bundle.mainWorker}");`], {
             type: "text/javascript",
           }),
         );
@@ -263,6 +267,61 @@ export class DuckDBDataSource implements DataSource {
       name,
       group,
       ...(description ? { description } : {}),
+      rowCount,
+      columns,
+    };
+    this.datasets.set(name, meta);
+    return meta;
+  }
+
+
+  /**
+   * Register a set of remote (https) parquet files as one queryable view.
+   *
+   * DuckDB-WASM's HTTP filesystem issues Range requests, so queries read
+   * only the parquet footers and the row groups they actually need — the
+   * dataset can be far larger than browser memory. URLs with hive-style
+   * path segments (e.g. `.../month=2024-01/part-0.parquet`) expose their
+   * partition column when `hivePartitioning` stays enabled (the default),
+   * and equality/range predicates on that column prune whole files.
+   *
+   * The real row count is read once at registration (parquet metadata only,
+   * no row data) and cached on the DatasetMeta surfaced by listDatasets.
+   */
+  async registerRemoteParquet(
+    name: string,
+    urls: string[],
+    options: {
+      /** listDatasets group; defaults to "remote". */
+      group?: string;
+      description?: string;
+      /** Derive partition columns from `key=value` path segments (default true). */
+      hivePartitioning?: boolean;
+    } = {},
+  ): Promise<DatasetMeta> {
+    this.validateName(name);
+    if (urls.length === 0) {
+      throw new Error("registerRemoteParquet needs at least one URL.");
+    }
+    for (const url of urls) {
+      if (!/^https?:\/\//.test(url) || /['\\;\s]/.test(url)) {
+        throw new Error(`Not a plain http(s) URL: ${JSON.stringify(url)}`);
+      }
+    }
+    const hive = options.hivePartitioning ?? true;
+    const list = urls.map((u) => `'${u}'`).join(", ");
+    await this.exec(
+      `CREATE OR REPLACE VIEW ${quoteIdent(name)} AS SELECT * FROM read_parquet([${list}], hive_partitioning=${hive ? 1 : 0})`,
+    );
+    const countRows = await this.execObjects(
+      `SELECT count(*)::DOUBLE AS n FROM ${quoteIdent(name)}`,
+    );
+    const rowCount = Number(countRows[0]?.["n"] ?? 0);
+    const columns = await this.describeColumns(name);
+    const meta: DatasetMeta = {
+      name,
+      group: options.group ?? "remote",
+      ...(options.description ? { description: options.description } : {}),
       rowCount,
       columns,
     };
