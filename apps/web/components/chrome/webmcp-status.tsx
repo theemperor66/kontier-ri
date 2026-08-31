@@ -3,8 +3,8 @@
 /**
  * WebMCP status pill: green when `document.modelContext` (or the
  * `navigator.modelContext` fallback) is present. Tool inventory comes from
- * @kontier-ri/studio: 19 static tools always mounted, +3 dynamic tools while
- * a tile is selected.
+ * @kontier-ri/studio: STATIC_TOOL_NAMES always mounted, +3 dynamic tools
+ * while a tile is selected.
  */
 
 import { useEffect, useState } from "react";
@@ -50,7 +50,9 @@ export function WebMCPStatus() {
             </p>
             <ul className="grid grid-cols-2 gap-x-3 font-mono text-[10px] leading-4">
               {tools.map((t) => (
-                <li key={t}>{t}</li>
+                <li key={t} className="break-all">
+                  {t}
+                </li>
               ))}
             </ul>
             {!hasSelection ? (

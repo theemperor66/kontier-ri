@@ -14,6 +14,9 @@ import { PageTabs } from "@/components/chrome/page-tabs";
 import { ActivityFeed } from "@/components/chrome/activity-feed";
 import { EmptyState } from "@/components/chrome/empty-state";
 import { ShellExtras } from "@/components/chrome/shell-extras";
+import { AgentCursor } from "@/components/presence/agent-cursor";
+import { InsightTray } from "@/components/presence/insight-tray";
+import { PlanCard } from "@/components/presence/plan-card";
 import { useUiState } from "@/lib/ui-state";
 import { cn } from "@/lib/utils";
 
@@ -92,7 +95,7 @@ export function StudioApp() {
 
   return (
     <DataProvider>
-      {/* WebMCP: 19 static tools + 3 selection-scoped tools (top-level mount;
+      {/* WebMCP: 36 static tools + 3 selection-scoped tools (top-level mount;
           registration is a no-op when document.modelContext is absent). */}
       <WebMCPTools dataSource={dataSource} />
       <SelectedTileTools dataSource={dataSource} />
@@ -107,6 +110,7 @@ export function StudioApp() {
         ) : null}
         {!presentation ? <PageTabs /> : null}
         {!presentation ? <FilterBar /> : null}
+        {!presentation ? <InsightTray /> : null}
         <main
           className={cn(
             "min-h-0 flex-1 transition-[padding] duration-300",
@@ -119,6 +123,9 @@ export function StudioApp() {
           <ActivityFeed open={activityOpen} onClose={() => setActivityOpen(false)} />
         ) : null}
       </div>
+      {/* Agent presence layer (E2): renders ONLY from real tool calls. */}
+      <PlanCard />
+      <AgentCursor />
       <ShellExtras />
       <Toaster
         position="bottom-right"

@@ -95,6 +95,28 @@ always-registered and error 'no tile selected'):
 - `restyle_selected_tile` `{color?, chartType?, stacked?}`
 - `explain_selected_tile` `{}` — returns spec + data summary + what filters affect it
 
+## Group 6 — Agent presence (ephemeral co-working state)
+
+The presence layer renders ONLY from real tool calls (honesty rule: no
+timers, no fake autonomy). Plan + insights are ephemeral: never in the undo
+history, never persisted, cleared on dashboard switch — but every event is
+activity-logged (`Agent shared a plan`, `Insight proposed/accepted/dismissed`).
+Accepting an insight executes its `suggestedAction` through the EXISTING
+command layer (origin `agent`): undoable, attributed, glow-pulsed, and the
+synthetic "Kai" cursor flies to the touched tile.
+
+| Tool | Input | Notes |
+|---|---|---|
+| `present_plan` | `{title?, steps: [{label, status?}]}` | upserts the floating "Kai" plan card; steps default `pending`, max 12 |
+| `update_plan_step` | `{index, status: pending\|active\|done\|failed}` | 0-based; ticks the card; card auto-fades 10s after ALL steps are done |
+| `propose_insight` | `{title, body, severity?: info\|warn\|critical, tileId?, suggestedAction?}` | renders an insight chip with Accept/Dismiss; returns `{insightId, state: 'proposed'}` — NOTHING is applied until the user clicks Accept |
+| `clear_plan` | `{}` | removes the plan card |
+
+`suggestedAction` (strictly validated, discriminated on `kind`):
+`{kind: 'add_annotation'\|'add_tile'\|'set_filter', payload}` — payloads
+match the corresponding tools (`add_annotation`, `add_tile`,
+`set_global_filter`).
+
 ## Safety / guard rails
 - run_sql: strip comments, single statement, must parse as SELECT (reject
   ATTACH/COPY/PRAGMA/INSTALL etc.), enforce LIMIT, 5s query timeout.
@@ -113,7 +135,8 @@ add_annotation, set_tile_filters, set_cross_filter, clear_cross_filter,
 add_page, rename_page, remove_page, switch_page, create_calculated_field,
 list_calculated_fields, remove_calculated_field, create_view, remove_view,
 get_dashboard_state, get_user_focus, describe_tile, export_tile_data,
-get_activity_log  (32 static + 3 dynamic = 35)
+get_activity_log, present_plan, update_plan_step, propose_insight,
+clear_plan  (36 static + 3 dynamic = 39)
 
 ## Doc model notes (v2)
 - The doc has `pages[]` (`{id, name, tiles}`) + `activePageId`; `doc.tiles`

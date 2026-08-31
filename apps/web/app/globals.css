@@ -247,6 +247,35 @@
   font-size: 10px;
 }
 
+/* --- Agent presence (E2): plan card / step ticks / synthetic cursor ------ */
+
+/* Step-tick + chip/card entrance: small pop-in, transform+opacity only. */
+@keyframes presence-tick {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.presence-tick {
+  animation: presence-tick 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes presence-card-enter {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.presence-card-enter {
+  animation: presence-card-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Kai's cursor flight: FLIP via transform transition only (no layout).
+   The prefers-reduced-motion block below collapses it to a jump. */
+.agent-cursor {
+  transition:
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.3s ease;
+  will-change: transform;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
