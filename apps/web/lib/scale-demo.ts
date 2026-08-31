@@ -174,11 +174,18 @@ async function runScaleDemo(
     clearInterval(ticker);
     const wall = ((performance.now() - t0) / 1000).toFixed(1);
     const bytes = fetchedBytes();
+    // Cross-origin dev servers cannot see Accept-Ranges on the data host
+    // (not CORS-exposed), so DuckDB falls back to whole-file reads there.
+    // On the deployed site (same origin as the data) it range-reads only
+    // parquet metadata here. Keep the copy honest in both modes.
+    const fetchedNote =
+      bytes > 0 && bytes < SCALE_TOTAL_MB * 1e6 * 0.1
+        ? ` — ${formatMB(bytes)} fetched of the ${SCALE_TOTAL_MB} MB dataset (parquet metadata only)`
+        : bytes > 0
+          ? ` — ${formatMB(bytes)} moved (this origin reads files whole; the deployed site range-reads only what a query needs)`
+          : "";
     toast.success(
-      `${SCALE_DATASET} registered: ${meta.rowCount.toLocaleString("en-US")} rows counted in ${wall}s` +
-        (bytes > 0
-          ? ` — ${formatMB(bytes)} fetched of the ${SCALE_TOTAL_MB} MB dataset (parquet metadata only).`
-          : "."),
+      `${SCALE_DATASET} registered: ${meta.rowCount.toLocaleString("en-US")} rows counted in ${wall}s${fetchedNote}.`,
       { id: TOAST_ID, duration: 10_000 },
     );
     resetDashboard(buildScaleDoc(mode, meta.rowCount));
@@ -197,7 +204,9 @@ async function runScaleDemo(
         stopNetStats();
         if (now > 0) {
           toast.info(
-            `Live tiles drew from ${formatMB(now)} of the ${SCALE_TOTAL_MB} MB dataset — DuckDB-WASM range-read only the row groups it needed.`,
+            now < SCALE_TOTAL_MB * 1e6 * 0.5
+              ? `Live tiles drew from ${formatMB(now)} of the ${SCALE_TOTAL_MB} MB dataset — DuckDB-WASM range-read only the row groups it needed.`
+              : `Live tiles moved ${formatMB(now)} — this origin falls back to whole-file HTTP reads (cross-origin hides Range support). The deployed site range-reads only the row groups it needs.`,
             { duration: 12_000 },
           );
         }
