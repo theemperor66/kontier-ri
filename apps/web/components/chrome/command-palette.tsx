@@ -45,6 +45,7 @@ import {
 import { exportTileCSV } from "@/lib/export-csv";
 import { exportDashboardPNG, exportTilePNG } from "@/lib/export-image";
 import { buildShareURL } from "@/lib/share-url";
+import { withViewTransition } from "@/lib/theme-transition";
 import type { DatasetMeta } from "@kontier-ri/datasource";
 
 function firstDataset(datasets: DatasetMeta[]): DatasetMeta | null {
@@ -257,12 +258,16 @@ export function CommandPalette() {
             </Command.Item>
             <Command.Item
               onSelect={run(() =>
-                store.getState().setTheme(
-                  { mode: mode === "dark" ? "light" : "dark" },
-                  {
-                    origin: "human",
-                    label: `Switched to ${mode === "dark" ? "light" : "dark"} mode`,
-                  },
+                withViewTransition(
+                  () =>
+                    store.getState().setTheme(
+                      { mode: mode === "dark" ? "light" : "dark" },
+                      {
+                        origin: "human",
+                        label: `Switched to ${mode === "dark" ? "light" : "dark"} mode`,
+                      },
+                    ),
+                  { fallbackClass: "theme-fade" },
                 ),
               )}
             >
@@ -274,7 +279,9 @@ export function CommandPalette() {
             <Command.Item onSelect={run(() => store.getState().redo())}>
               <ArrowClockwise className="size-4 text-muted-foreground" /> Redo
             </Command.Item>
-            <Command.Item onSelect={run(() => togglePresentation())}>
+            <Command.Item
+              onSelect={run(() => withViewTransition(() => togglePresentation()))}
+            >
               <Play className="size-4 text-muted-foreground" /> Presentation mode
               <kbd className="ml-auto rounded border border-border bg-muted px-1.5 text-[10px] text-muted-foreground">F</kbd>
             </Command.Item>

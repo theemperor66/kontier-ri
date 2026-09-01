@@ -155,6 +155,11 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    /* Latent absolutely-positioned chrome (tooltips near the right edge)
+       must never open a horizontal scroll range for native scrolling. */
+    overflow-x: clip;
+  }
   body {
     @apply bg-background text-foreground;
     overflow-x: clip;
@@ -208,9 +213,12 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .tile-enter {
-  /* U5: `both` keeps the tile hidden through its stagger delay
-     (--tile-enter-delay is set per tile by grid-canvas, 40ms cascade). */
-  animation: tile-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* U5: `backwards` keeps the tile hidden through its stagger delay
+     (--tile-enter-delay is set per tile by grid-canvas, 40ms cascade)
+     WITHOUT persisting the final transform after the animation — a
+     forwards/both fill would turn every tile into a permanent transformed
+     containing block and mis-anchor position:fixed overlays inside tiles. */
+  animation: tile-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) backwards;
   animation-delay: var(--tile-enter-delay, 0s);
 }
 
@@ -281,6 +289,15 @@
 }
 
 /* --- U4/U5/U6: chrome menus, theme cross-fade, focus visibility --------- */
+
+/* While a dropdown trigger is expanded, its hover tooltip stays hidden —
+   the open panel already names the surface. And when a trigger regains
+   focus programmatically after a mouse-driven menu action (:focus without
+   :focus-visible), the tooltip stays quiet too. */
+span:has(> button[aria-expanded="true"]) > [role="tooltip"],
+span:has(> :focus:not(:focus-visible)) > [role="tooltip"] {
+  opacity: 0;
+}
 
 /* Dropdown menu entrance (Share / overflow in the top bar). */
 @keyframes menu-enter {
