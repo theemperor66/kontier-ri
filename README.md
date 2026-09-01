@@ -38,7 +38,9 @@ live document* the human is looking at:
 - **Calculated fields & SQL views** — define `arpu` once, use it everywhere; views appear as datasets
 - **Pages, dashboards, templates** — multi-page docs, a local dashboard manager, 3 starter templates
 - **⌘K command palette**, presentation mode, PNG/CSV export, share-URLs, autosave persistence
-- **35 WebMCP tools** (32 static + 3 selection-scoped) — every one of these features is agent-operable
+- **Scale**: aggregate **100 million rows live in your browser** — DuckDB-WASM streams only the parquet row groups it needs (~15% of a 511MB dataset) over HTTP ranges
+- **Agent presence**: Kai's plan card, proactive insight chips, and a visible cursor — every move a real WebMCP tool call
+- **39 WebMCP tools** (32 static + 3 selection-scoped) — every one of these features is agent-operable
 
 ## 60-second quickstart
 
@@ -119,7 +121,7 @@ In practice that call lives behind our `useWebMCPTool` React hook
 (`packages/studio/src/webmcp/useWebMCPTool.ts`): tools mount with components,
 re-validate input with the same zod schema that produced the JSON Schema, and
 unregister via `AbortController` — which is how the three selection-scoped
-tools appear only while a tile is selected (32 → 35 tools live).
+tools appear only while a tile is selected (36 → 39 tools live).
 
 ## Privacy
 
