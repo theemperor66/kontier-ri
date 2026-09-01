@@ -45,6 +45,38 @@ import { FunnelChartView } from "@/components/canvas/charts/funnel-chart";
 import { RadarChartView } from "@/components/canvas/charts/radar-chart";
 import { HeatmapChartView } from "@/components/canvas/charts/heatmap-chart";
 
+/**
+ * Kontier brush handle (A1): hairline square grip centered on a slim strip —
+ * replaces the recharts default scrollbar-gray traveller. Behavior (drag /
+ * brushedRange wiring) is untouched; this only redraws the handle.
+ */
+function brushTraveller(props: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}) {
+  const { x, y, width, height } = props;
+  const size = 8;
+  const gx = x + width / 2 - size / 2;
+  const gy = y + height / 2 - size / 2;
+  return (
+    <g>
+      <rect x={x} y={y} width={width} height={height} fill="transparent" />
+      <rect
+        x={gx}
+        y={gy}
+        width={size}
+        height={size}
+        rx={2}
+        fill="var(--card)"
+        stroke="var(--muted-foreground)"
+        strokeWidth={1}
+      />
+    </g>
+  );
+}
+
 /** Coerce DB values into something recharts can plot. */
 function toPlottable(v: unknown): unknown {
   if (typeof v === "bigint") return Number(v);
@@ -378,8 +410,9 @@ export function ChartTile({ tile }: { tile: Tile }) {
   const brush = showBrush ? (
     <Brush
       dataKey={xKey}
-      height={18}
-      travellerWidth={8}
+      height={24}
+      travellerWidth={9}
+      traveller={brushTraveller}
       onChange={handleBrush}
     />
   ) : null;

@@ -231,16 +231,17 @@
   fill: var(--muted);
   opacity: 0.4;
 }
+/* Kontier brush (A1): slim strip, hairline track, violet range shading,
+   square grips (drawn by the custom traveller in chart-tile). */
 .recharts-brush > rect:first-of-type {
   fill: transparent;
   stroke: var(--border);
+  rx: 4px;
 }
 .recharts-brush .recharts-brush-slide {
-  fill: var(--muted-foreground);
-  fill-opacity: 0.15;
-}
-.recharts-brush .recharts-brush-traveller rect {
-  fill: var(--muted-foreground);
+  fill: var(--chart-3);
+  fill-opacity: 0.16;
+  stroke: color-mix(in oklab, var(--chart-3) 40%, transparent);
 }
 .recharts-brush-texts text {
   fill: var(--muted-foreground);
