@@ -85,6 +85,30 @@ export function TableTile({ tile }: { tile: Tile }) {
   const valueFormat = spec.format?.value;
   const rules = spec.format?.rules;
 
+  // L8: numeric columns right-align; when a `currency` column neighbors a
+  // money-ish numeric column, that column renders as real currency.
+  const numericCols = result.columns.map((c, idx) => {
+    const t = c.type.toLowerCase();
+    if (
+      t.includes("int") ||
+      t.includes("float") ||
+      t.includes("double") ||
+      t.includes("decimal")
+    ) {
+      return true;
+    }
+    return result.rows.some(
+      (r) => typeof r[idx] === "number" || typeof r[idx] === "bigint",
+    );
+  });
+  const currencyIdx = result.columns.findIndex(
+    (c) => c.name.toLowerCase() === "currency",
+  );
+  const moneyCol = (idx: number): boolean =>
+    currencyIdx >= 0 &&
+    numericCols[idx] === true &&
+    /amount|price|total|revenue|value/i.test(result.columns[idx]?.name ?? "");
+
   const cycleSort = (column: string) => {
     setSort((prev) => {
       if (prev?.column !== column) return { column, dir: "asc" };
@@ -99,8 +123,9 @@ export function TableTile({ tile }: { tile: Tile }) {
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-card">
             <tr className="border-b text-left text-muted-foreground">
-              {result.columns.map((c) => {
+              {result.columns.map((c, ci) => {
                 const active = sort?.column === c.name;
+                const numeric = numericCols[ci] === true;
                 return (
                   <th
                     key={c.name}
@@ -116,9 +141,9 @@ export function TableTile({ tile }: { tile: Tile }) {
                     <button
                       type="button"
                       title={`Sort by ${c.name}`}
-                      className={`group/sort flex items-center gap-0.5 py-1.5 pr-2 transition-colors hover:text-foreground ${
-                        active ? "text-foreground" : ""
-                      }`}
+                      className={`group/sort flex w-full items-center gap-0.5 py-1.5 pr-2 transition-colors hover:text-foreground ${
+                        numeric ? "justify-end text-right" : ""
+                      } ${active ? "text-foreground" : ""}`}
                       onClick={() => cycleSort(c.name)}
                     >
                       {humanizeIdent(c.name)}
@@ -154,15 +179,23 @@ export function TableTile({ tile }: { tile: Tile }) {
                     crossFilter != null &&
                     crossFilter.column === col &&
                     String(crossFilter.value) === String(v);
+                  const rowCurrency =
+                    moneyCol(j) && n != null ? String(r[currencyIdx] ?? "") : "";
                   const text =
-                    n != null && valueFormat != null
-                      ? formatValue(n, valueFormat)
-                      : cellText(v);
+                    n != null && /^[A-Za-z]{3}$/.test(rowCurrency)
+                      ? formatValue(n, {
+                          style: "currency",
+                          currency: rowCurrency.toUpperCase(),
+                        })
+                      : n != null && valueFormat != null
+                        ? formatValue(n, valueFormat)
+                        : cellText(v);
                   return (
                     <td
                       key={j}
                       className={
-                        "whitespace-nowrap py-1.5 pr-3 tabular-nums text-foreground/90" +
+                        "whitespace-nowrap py-[5px] pr-3 tabular-nums text-foreground/90" +
+                        (numericCols[j] === true ? " text-right" : "") +
                         (v != null
                           ? " cursor-pointer hover:bg-accent/60"
                           : "") +

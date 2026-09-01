@@ -31,6 +31,7 @@ import {
   chartContextMenu,
   legendToggleContent,
   sectorContextMenu,
+  seriesInk,
   markOpacity,
   TREND_KEY,
   useCrossFilterEmit,
@@ -83,6 +84,11 @@ function brushTraveller(props: {
       />
     </g>
   );
+}
+
+/** Stable, DOM-safe gradient id per tile + series (L2 line underfill). */
+function gradId(tileId: string, i: number): string {
+  return `lc-${tileId.replace(/[^a-zA-Z0-9_-]/g, "-")}-${i}`;
 }
 
 /** Coerce DB values into something recharts can plot. */
@@ -188,7 +194,9 @@ export function ChartTile({ tile }: { tile: Tile }) {
   }
 
   const colorFor = (i: number) =>
-    i === 0 && spec.color ? spec.color : CHART_PALETTE[i % CHART_PALETTE.length]!;
+    i === 0 && spec.color
+      ? seriesInk(spec.color)
+      : CHART_PALETTE[i % CHART_PALETTE.length]!;
 
   const valueFormat = spec.format?.value;
   const y2Format = spec.format?.y2;
@@ -327,7 +335,10 @@ export function ChartTile({ tile }: { tile: Tile }) {
         <HBarChartView
           {...baseProps}
           stacked={spec.stacked}
-          ruleColorFor={(v) => resolveRuleColor(v, rules)}
+          ruleColorFor={(v) => {
+            const c = resolveRuleColor(v, rules);
+            return c ? seriesInk(c) : null;
+          }}
         >
           {referenceLineEl}
           {legendEl}
@@ -472,6 +483,7 @@ export function ChartTile({ tile }: { tile: Tile }) {
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart
         {...common}
+        barCategoryGap="12%"
         onClick={cartesianClick}
         onContextMenu={chartContextMenu(xKey, openMarkMenu)}
         className="cursor-crosshair"
@@ -480,6 +492,42 @@ export function ChartTile({ tile }: { tile: Tile }) {
         {annotationLines}
         {referenceLineEl}
         {legendEl}
+        {spec.chartType === "line" ? (
+          <defs>
+            {seriesKeys.map((k, i) => (
+              <linearGradient
+                key={k}
+                id={gradId(tile.id, i)}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <stop offset="0%" stopColor={colorFor(i)} stopOpacity={0.11} />
+                <stop offset="100%" stopColor={colorFor(i)} stopOpacity={0} />
+              </linearGradient>
+            ))}
+          </defs>
+        ) : null}
+        {spec.chartType === "line"
+          ? seriesKeys.map((k, i) => (
+              // L2: subtle vertical gradient underfill beneath each line —
+              // a silent Area (no stroke/legend/tooltip presence) so the
+              // .recharts-line-curve contract of the Line stays intact.
+              <Area
+                key={`${k}-fill`}
+                type="monotone"
+                dataKey={k}
+                stroke="none"
+                fill={`url(#${gradId(tile.id, i)})`}
+                activeDot={false}
+                legendType="none"
+                tooltipType="none"
+                hide={hidden.has(k)}
+                isAnimationActive={false}
+              />
+            ))
+          : null}
         {spec.chartType === "line"
           ? seriesKeys.map((k, i) => (
               <Line
@@ -526,7 +574,7 @@ export function ChartTile({ tile }: { tile: Tile }) {
                     return (
                       <Cell
                         key={j}
-                        fill={ruleColor ?? colorFor(i)}
+                        fill={ruleColor ? seriesInk(ruleColor) : colorFor(i)}
                         opacity={markOpacity(activeValue, row[xKey])}
                       />
                     );

@@ -100,14 +100,17 @@
   --border: oklch(0.918 0.007 264);
   --input: oklch(0.918 0.007 264);
   --ring: oklch(0.714 0.014 41.2);
-  /* Chart series ink. Series 1 is the brand blue (same ink as
-     --primary); companions are hue-spaced at comparable lightness so
-     multi-series charts separate by hue, not by how faint they are. */
+  /* Chart series ink (light) — L1: ramp anchored on the Kontier brand
+     blue with hue-spaced companions at comparable perceived lightness.
+     No muddy amber/mustard: series 4 is a clean apricot (hue 55), the
+     old hue-75 mustard is gone; series 5 trades the washed slate for a
+     cool sky so a 5-series stack stays harmonized. .dark values are
+     untouched. */
   --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.56 0.11 192);
+  --chart-2: oklch(0.58 0.125 163);
   --chart-3: oklch(0.55 0.15 295);
-  --chart-4: oklch(0.62 0.13 75);
-  --chart-5: oklch(0.45 0.03 264);
+  --chart-4: oklch(0.66 0.135 55);
+  --chart-5: oklch(0.56 0.1 205);
   /* Brand ink - identical in both modes. */
   --brand-primary: #1b17ff;
   --brand-primary-soft: #4f4bff;
@@ -358,3 +361,53 @@ html.theme-fade *::after {
     animation: none !important;
   }
 }
+
+
+/* --- Light chart craft (L1–L9) ------------------------------------------ *
+ * Chart/KPI/canvas polish tokens + classes. Light mode is the primary
+ * target; every rule here either applies identically in dark or is
+ * explicitly reverted under .dark so dark mode does not regress.        */
+
+:root {
+  /* L1: softer chart red for destructive-colored marks (churn bars).
+     Render-side ink mapping only — doc specs still say var(--destructive). */
+  --chart-destructive: oklch(0.585 0.175 26);
+  /* L5: KPI tint pairs (light) — soft Kontier tints for KPI card washes. */
+  --tint-blue: oklch(0.965 0.018 258);
+  --tint-blue-deep: oklch(0.93 0.035 258);
+  --tint-mint: oklch(0.968 0.022 168);
+  --tint-mint-deep: oklch(0.935 0.04 168);
+  --tint-lavender: oklch(0.965 0.02 295);
+  --tint-lavender-deep: oklch(0.932 0.038 295);
+  --tint-amber: oklch(0.972 0.02 80);
+  --tint-amber-deep: oklch(0.94 0.045 80);
+  /* L9: dot-grid ink for the canvas field. */
+  --canvas-dot: oklch(0.885 0.008 264);
+}
+.dark {
+  /* Dark keeps its existing destructive ink for chart marks. */
+  --chart-destructive: var(--destructive);
+}
+
+/* L5: KPI tint washes — a soft diagonal gradient per KPI (stable hash of
+   the tile id picks one of four). Light only; dark keeps the flat card. */
+.kpi-tint-0 { background-image: linear-gradient(135deg, var(--tint-blue-deep) 0%, var(--tint-blue) 38%, transparent 78%); }
+.kpi-tint-1 { background-image: linear-gradient(135deg, var(--tint-mint-deep) 0%, var(--tint-mint) 38%, transparent 78%); }
+.kpi-tint-2 { background-image: linear-gradient(135deg, var(--tint-lavender-deep) 0%, var(--tint-lavender) 38%, transparent 78%); }
+.kpi-tint-3 { background-image: linear-gradient(135deg, var(--tint-amber-deep) 0%, var(--tint-amber) 38%, transparent 78%); }
+.dark .kpi-tint-0,
+.dark .kpi-tint-1,
+.dark .kpi-tint-2,
+.dark .kpi-tint-3 { background-image: none; }
+
+/* L9: the canvas reads as an intentional work surface, not a white void —
+   subtle dot grid across the whole canvas area (light only), and the
+   canvas root stretches to the viewport so there is no hard stop below
+   the last tile row. */
+[data-canvas-root] {
+  min-height: 100%;
+  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: 11px 11px;
+}
+.dark [data-canvas-root] { background-image: none; }

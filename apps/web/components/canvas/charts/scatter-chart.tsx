@@ -22,6 +22,7 @@ import {
 } from "./common";
 import { chartTooltip } from "./chart-tooltip";
 import { linearRegression } from "./regression";
+import { humanizeIdent } from "@/lib/format";
 
 interface ScatterViewProps extends BaseChartProps {
   /** Dashed least-squares trendline over the first series. */
@@ -53,6 +54,14 @@ export function ScatterChartView({
   children,
 }: ScatterViewProps) {
   const numericX = data.length > 0 && data.every((r) => num(r[xKey]) != null);
+  // L7: y starts at 0 unless the data actually goes negative — a scatter
+  // floating over a -€8K phantom range reads as noise.
+  const hasNegative = data.some((r) =>
+    seriesKeys.some((k) => {
+      const v = num(r[k]);
+      return v != null && v < 0;
+    }),
+  );
 
   const plotted = useMemo(() => {
     if (!trend || seriesKeys.length === 0) return data;
@@ -65,11 +74,16 @@ export function ScatterChartView({
     });
     const fit = linearRegression(pts);
     if (!fit) return data;
+    // L7: the trend guide must not drag the y domain below the data —
+    // with all-positive data the fitted line is clipped at 0 instead of
+    // opening a phantom negative range (recharts expands past a [0, auto]
+    // domain for out-of-range data).
+    const floor = pts.some(([, y]) => y < 0) ? -Infinity : 0;
     return data.map((r, i) => {
       const x = numericX ? num(r[xKey]) : i;
-      return x == null
-        ? r
-        : { ...r, [TREND_KEY]: fit.intercept + fit.slope * x };
+      if (x == null) return r;
+      const t = fit.intercept + fit.slope * x;
+      return t < floor ? r : { ...r, [TREND_KEY]: t };
     });
   }, [data, trend, seriesKeys, xKey, numericX]);
 
@@ -77,7 +91,7 @@ export function ScatterChartView({
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart
         data={plotted}
-        margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+        margin={{ top: 8, right: 8, bottom: 14, left: 0 }}
         onClick={(state: { activeLabel?: unknown }) => {
           if (state?.activeLabel != null) {
             onItemClick?.({ column: xKey, value: state.activeLabel });
@@ -95,12 +109,32 @@ export function ScatterChartView({
           axisLine={false}
           minTickGap={24}
           tickFormatter={numericX ? axisTickFormatter("number") : undefined}
+          label={{
+            value: humanizeIdent(xKey),
+            position: "insideBottom",
+            offset: -10,
+            fill: "var(--muted-foreground)",
+            fontSize: 10,
+          }}
         />
         <YAxis
           tickLine={false}
           axisLine={false}
-          width={axisWidth(valueFormat)}
+          domain={[hasNegative ? "auto" : 0, "auto"]}
+          width={axisWidth(valueFormat) + 14}
           tickFormatter={axisTickFormatter(valueFormat)}
+          label={
+            seriesKeys.length === 1
+              ? {
+                  value: humanizeIdent(seriesKeys[0]!),
+                  angle: -90,
+                  position: "insideLeft",
+                  offset: 0,
+                  fill: "var(--muted-foreground)",
+                  fontSize: 10,
+                }
+              : undefined
+          }
         />
         <RechartsTooltip
           content={chartTooltip({
@@ -139,7 +173,9 @@ export function ScatterChartView({
                   cy={p.cy}
                   r={4}
                   fill={colorFor(i)}
-                  opacity={markOpacity(activeValue, p.payload?.[xKey])}
+                  stroke="var(--card)"
+                  strokeWidth={1}
+                  opacity={0.75 * markOpacity(activeValue, p.payload?.[xKey])}
                 />
               );
             }}
@@ -148,9 +184,9 @@ export function ScatterChartView({
         {trend ? (
           <Line
             dataKey={TREND_KEY}
-            stroke="var(--muted-foreground)"
+            stroke="color-mix(in oklab, var(--foreground) 55%, transparent)"
             strokeDasharray="6 4"
-            strokeWidth={1.5}
+            strokeWidth={1.75}
             dot={false}
             activeDot={false}
             legendType="none"

@@ -200,9 +200,15 @@ test("editing a measure aggregation updates the chart", async ({ page }) => {
   const bars = page.locator(
     `[data-testid=tile-${tileId}] .recharts-bar-rectangle path`,
   );
+  // Signature = bar HEIGHTS only (the semantic under test). Path "d"
+  // strings also encode x positions, which shift when the canvas
+  // relayouts mid-test (inspector dock padding transition) — that made
+  // the undo comparison flaky-fail on identical bar heights.
   const sig = () =>
     bars.evaluateAll((els) =>
-      els.map((e) => e.getAttribute("d") ?? "").join("|"),
+      els
+        .map((e) => (e as SVGPathElement).getBBox().height.toFixed(2))
+        .join("|"),
     );
   // Wait for the entry animation to settle so signatures are comparable.
   const settled = async () => {
@@ -211,7 +217,10 @@ test("editing a measure aggregation updates the chart", async ({ page }) => {
       .poll(
         async () => {
           const cur = await sig();
-          const same = cur !== "" && cur === prev;
+          // Bars render 0-height before the entry animation starts —
+          // never accept that as a settled state.
+          const painted = cur !== "" && !/^0\.00(\|0\.00)*$/.test(cur);
+          const same = painted && cur === prev;
           prev = cur;
           return same;
         },

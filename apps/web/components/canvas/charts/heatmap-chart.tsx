@@ -3,10 +3,21 @@
 import { Fragment, useMemo, useState } from "react";
 import { formatValue } from "@/lib/format";
 import {
-  inkMix,
   markOpacity,
   type BaseChartProps,
 } from "./common";
+
+/**
+ * L4: perceptual card→brand-blue scale with a minimum visible floor —
+ * the lowest data cell still mixes 16% chart ink so low rows (plan_scale)
+ * read as DATA, never as disabled near-white. Mixing toward var(--card)
+ * (not transparent) keeps the math identical in dark mode.
+ */
+function heatInk(fraction: number): string {
+  const f = Math.min(1, Math.max(0, fraction));
+  const pct = Math.round(16 + 76 * f);
+  return `color-mix(in oklab, var(--chart-1) ${pct}%, var(--card))`;
+}
 
 interface HeatmapViewProps extends BaseChartProps {
   /** Row dimension (second dim of the query). */
@@ -137,7 +148,7 @@ export function HeatmapChartView({
               key={`ry-${y}`}
               type="button"
               title={y}
-              className={`truncate pr-1.5 text-right text-[10px] leading-tight transition-colors ${
+              className={`truncate pr-1.5 text-right font-mono text-[9px] leading-tight transition-colors ${
                 hover?.y === y
                   ? "font-medium text-foreground"
                   : "text-muted-foreground"
@@ -149,6 +160,7 @@ export function HeatmapChartView({
             {xs.map((x) => {
               const v = cells.get(`${x}\u0000${y}`);
               const frac = v == null || span <= 0 ? 0.5 : (v - min) / span;
+              const hovered = hover?.x === x && hover?.y === y;
               return (
                 <button
                   key={`c-${x}-${y}`}
@@ -158,10 +170,10 @@ export function HeatmapChartView({
                       ? `${y} / ${x}: —`
                       : `${y} / ${x}: ${formatValue(v, valueFormat ?? "number")}`
                   }
-                  className={`group/cell relative rounded-[2px] transition-opacity duration-100 ${onItemClick ? "cursor-crosshair" : "cursor-default"} outline-offset-[-1px] hover:outline hover:outline-1 hover:outline-ring`}
+                  className={`group/cell relative overflow-hidden rounded-[2px] transition-opacity duration-100 ${onItemClick ? "cursor-crosshair" : "cursor-default"} outline-offset-[-1px] hover:outline hover:outline-1 hover:outline-ring`}
                   style={{
                     backgroundColor:
-                      v == null ? "var(--muted)" : inkMix(frac),
+                      v == null ? "var(--muted)" : heatInk(frac),
                     opacity: markOpacity(activeValue, x) * hoverDim(x, y),
                   }}
                   onMouseEnter={() => setHover({ x, y })}
@@ -175,7 +187,22 @@ export function HeatmapChartView({
                       { x: e.clientX, y: e.clientY },
                     );
                   }}
-                />
+                >
+                  {hovered && v != null ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-0 flex items-center justify-center whitespace-nowrap text-[9px] font-medium tabular-nums"
+                      style={{
+                        color:
+                          frac > 0.45
+                            ? "oklch(0.99 0 0)"
+                            : "var(--foreground)",
+                      }}
+                    >
+                      {formatValue(v, valueFormat ?? "compact")}
+                    </span>
+                  ) : null}
+                </button>
               );
             })}
           </Fragment>

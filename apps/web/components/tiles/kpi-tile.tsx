@@ -8,6 +8,13 @@ import { cn } from "@/lib/utils";
 import { TileError } from "./tile-error";
 import { TileShimmer } from "./tile-shimmer";
 
+/** L5: stable tint index (0–3) from the tile id — same wash every render. */
+function tintIndex(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return Math.abs(h) % 4;
+}
+
 function firstNumber(v: unknown): number | null {
   const n =
     typeof v === "string" || typeof v === "bigint" ? Number(v) : (v as number);
@@ -71,24 +78,44 @@ export function KpiTile({ tile }: { tile: Tile }) {
   const paths = spark && spark.length >= 3 ? sparkPaths(spark) : null;
 
   return (
-    <div className="relative flex h-full flex-col justify-center px-1">
+    <div
+      className={cn(
+        "relative flex h-full flex-col justify-center px-1",
+        paths && "pb-4",
+      )}
+    >
+      {/* L5: Kontier tint wash — soft gradient per KPI (light only via CSS;
+          bleeds to the card edges, clipped by the tile frame). */}
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute -bottom-3 -left-3 -right-3 -top-10",
+          `kpi-tint-${tintIndex(tile.id)}`,
+        )}
+      />
       {paths ? (
-        <svg
+        // L5: bottom-aligned clipped sparkline — an underlay capped at 40%
+        // of the card, never colliding with the delta chip above it.
+        <div
           aria-hidden
-          viewBox="0 0 100 32"
-          preserveAspectRatio="none"
-          className="pointer-events-none absolute -bottom-3 -left-3 -right-3 h-[42%] max-h-14 w-auto min-w-full"
+          className="pointer-events-none absolute -bottom-3 -left-3 -right-3 h-[40%] max-h-14 overflow-hidden"
         >
-          <path d={paths.area} fill="var(--chart-1)" opacity={0.08} />
-          <path
-            d={paths.line}
-            fill="none"
-            stroke="var(--chart-1)"
-            strokeWidth={1.25}
-            opacity={0.45}
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
+          <svg
+            viewBox="0 0 100 32"
+            preserveAspectRatio="none"
+            className="h-full w-full"
+          >
+            <path d={paths.area} fill="var(--chart-1)" opacity={0.08} />
+            <path
+              d={paths.line}
+              fill="none"
+              stroke="var(--chart-1)"
+              strokeWidth={1.25}
+              opacity={0.45}
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+        </div>
       ) : null}
       <div
         className="relative text-4xl font-semibold leading-tight tracking-tight tabular-nums"

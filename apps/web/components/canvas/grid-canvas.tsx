@@ -221,7 +221,10 @@ export function GridCanvas({ tiles }: { tiles: Tile[] }) {
   );
 
   const rows = tiles.reduce((m, t) => Math.max(m, t.layout.y + t.layout.h), 0);
-  const height = Math.max(rows, 4) * (ROW_H + GAP) + 160;
+  // L9: the canvas hugs its content — a slim landing strip below the last
+  // row (one gap + a little air), not a 160px void. The canvas ROOT
+  // stretches to the viewport via CSS, so drops below still work.
+  const height = Math.max(rows, 4) * (ROW_H + GAP) + 24;
 
   const ghostLayout = drag && cellW > 0 ? packedDrop(drag, cellW) : null;
   const ghost = ghostLayout ? rectFor(ghostLayout) : null;

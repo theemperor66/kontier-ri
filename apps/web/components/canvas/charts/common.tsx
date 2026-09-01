@@ -19,6 +19,15 @@ export const CHART_PALETTE = [
   "var(--chart-5)",
 ] as const;
 
+/**
+ * Render-side ink mapping (L1): specs that pin the raw destructive token
+ * (the churn "alarm" bars) draw with the softer chart red in light mode.
+ * The doc spec is untouched — this maps at paint time only.
+ */
+export function seriesInk(color: string): string {
+  return color === "var(--destructive)" ? "var(--chart-destructive)" : color;
+}
+
 /** Legend formatter: SQL aliases render as human words (A2). */
 export function legendLabelFormatter(value: unknown): React.ReactNode {
   return prettifySeriesLabel(String(value ?? ""));

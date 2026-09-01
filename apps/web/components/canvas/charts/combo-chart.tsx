@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import type { FormatOptions, ValueFormat } from "@/lib/format";
+import { prettifySeriesLabel } from "@/lib/format";
 import {
   axisTickFormatter,
   axisWidth,
@@ -59,11 +60,13 @@ export function ComboChartView({
     };
   });
   const hasRight = configs.some((c) => c.axis === "right");
+  const rightKey = configs.find((c) => c.axis === "right")?.key;
 
   return (
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart
         data={data}
+        barCategoryGap="12%"
         margin={{ top: 8, right: hasRight ? 0 : 8, bottom: 0, left: 0 }}
         onClick={(state: { activeLabel?: unknown }) => {
           if (state?.activeLabel != null) {
@@ -88,8 +91,20 @@ export function ComboChartView({
             orientation="right"
             tickLine={false}
             axisLine={false}
-            width={axisWidth(y2Format ?? valueFormat)}
+            width={axisWidth(y2Format ?? valueFormat) + 14}
             tickFormatter={axisTickFormatter(y2Format ?? valueFormat)}
+            label={
+              rightKey
+                ? {
+                    value: prettifySeriesLabel(rightKey),
+                    angle: 90,
+                    position: "insideRight",
+                    fill: "var(--muted-foreground)",
+                    fontSize: 10,
+                    offset: 0,
+                  }
+                : undefined
+            }
           />
         ) : null}
         <RechartsTooltip
@@ -111,7 +126,7 @@ export function ComboChartView({
               type="monotone"
               dataKey={cfg.key}
               stroke={colorFor(i)}
-              strokeWidth={2}
+              strokeWidth={2.5}
               dot={false}
               activeDot={{ r: 3 }}
               hide={hiddenKeys?.has(cfg.key)}
@@ -122,8 +137,9 @@ export function ComboChartView({
               yAxisId={cfg.axis}
               dataKey={cfg.key}
               fill={colorFor(i)}
+              fillOpacity={0.85}
               radius={[3, 3, 0, 0]}
-              maxBarSize={40}
+              maxBarSize={28}
               hide={hiddenKeys?.has(cfg.key)}
             >
               {data.map((row, j) => (

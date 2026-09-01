@@ -8,7 +8,8 @@ import {
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
 } from "recharts";
-import { formatValue, prettifySeriesLabel } from "@/lib/format";
+import { prettifySeriesLabel } from "@/lib/format";
+import type { FormatOptions, ValueFormat } from "@/lib/format";
 import {
   markOpacity,
   sectorContextMenu,
@@ -16,6 +17,38 @@ import {
   type LegendToggle,
 } from "./common";
 import { chartTooltip } from "./chart-tooltip";
+
+/**
+ * L6: center total must FIT the donut hole — compact notation with the
+ * currency symbol kept ("€1.02M"), never a full "€1,018,089" overflowing
+ * the ring.
+ */
+function centerTotal(
+  value: number,
+  format?: ValueFormat | FormatOptions,
+): string {
+  const style = typeof format === "string" ? format : format?.style;
+  if (style === "currency") {
+    const currency =
+      (typeof format === "object" ? format.currency : undefined) ?? "EUR";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      notation: "compact",
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
+  if (style === "percent") {
+    return new Intl.NumberFormat("en-US", {
+      style: "percent",
+      maximumFractionDigits: 1,
+    }).format(value);
+  }
+  return new Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
 
 interface DonutViewProps extends BaseChartProps {
   /**
@@ -66,15 +99,15 @@ export function DonutChartView({
 
   return (
     <div className="flex h-full w-full flex-col">
-      <div className="relative min-h-0 flex-1">
+      <div className="relative min-h-[104px] flex-1">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
             <Pie
               data={visible}
               dataKey={valueKey}
               nameKey={xKey}
-              innerRadius="68%"
-              outerRadius="88%"
+              innerRadius="62%"
+              outerRadius="92%"
               paddingAngle={2}
               stroke="var(--card)"
               className={onItemClick ? "cursor-crosshair" : undefined}
@@ -108,15 +141,15 @@ export function DonutChartView({
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-lg font-semibold tabular-nums leading-tight">
-            {total != null ? formatValue(total, valueFormat ?? "compact") : "—"}
+          <span className="text-lg font-semibold leading-tight tracking-tight tabular-nums">
+            {total != null ? centerTotal(total, valueFormat) : "—"}
           </span>
           <span className="text-[10px] text-muted-foreground">total</span>
         </div>
       </div>
       {showLegend && categoryToggle ? (
         <div
-          className="flex shrink-0 flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5 pt-1"
+          className="flex max-h-[38px] shrink-0 flex-wrap items-center justify-center gap-x-2.5 gap-y-0.5 overflow-hidden pt-1"
           role="group"
           aria-label="Toggle slices"
         >
