@@ -112,8 +112,9 @@ test("agent add_tile shows attribution chip and activity entry; undo removes it"
   // Attribution chip on the agent-touched tile.
   await expect(page.locator("[data-tile-type=kpi]", { hasText: "Agent KPI" })).toContainText("AI");
 
-  // Activity feed logs the agent command.
-  await page.getByRole("button", { name: "Toggle activity feed" }).click();
+  // Activity feed logs the agent command (lives in the ••• overflow menu).
+  await page.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Toggle activity feed" }).click();
   await expect(page.getByTestId("activity-feed")).toContainText('Added kpi tile "Agent KPI"');
 
   // Cmd+Z undoes the agent's change.

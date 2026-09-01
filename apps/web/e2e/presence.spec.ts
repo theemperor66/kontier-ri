@@ -90,7 +90,8 @@ test("present_plan renders Kai's plan card; steps tick; clear_plan removes it", 
   await expect(card).toContainText("1/2");
 
   // Plan events land in the activity feed (logged, but NOT undoable).
-  await page.getByRole("button", { name: "Toggle activity feed" }).click();
+  await page.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Toggle activity feed" }).click();
   await expect(page.getByTestId("activity-feed")).toContainText(
     "Agent shared a plan",
   );

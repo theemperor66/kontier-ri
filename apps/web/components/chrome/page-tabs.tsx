@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * Page tabs bar: pages are tabs INSIDE a dashboard (add / rename via
- * double-click / remove / switch). Hidden while the teaching empty state is
- * up (single empty page) and in presentation mode (not mounted).
+ * Page tabs: pages are tabs INSIDE a dashboard (add / rename via
+ * double-click / remove / switch). Rendered inline in the top bar as a
+ * segmented control. Hidden while the teaching empty state is up (single
+ * empty page); not mounted in presentation mode (top bar unmounts).
  */
 
 import { useState } from "react";
@@ -41,30 +42,43 @@ export function PageTabs() {
     setRenamingId(null);
   };
 
+  const activate = (pageId: string, name: string) => {
+    if (pageId !== activePageId && renamingId !== pageId) {
+      switchPage(pageId, {
+        origin: "human",
+        label: `Switched to page \u201c${name}\u201d`,
+      });
+    }
+  };
+
   return (
     <div
       data-testid="page-tabs"
-      className="flex items-center gap-1 overflow-x-auto border-b border-border/60 px-4 pt-2"
+      role="tablist"
+      aria-label="Dashboard pages"
+      className="flex items-center gap-0.5 overflow-x-auto py-1"
     >
       {pages.map((p) => {
         const active = p.id === activePageId;
         return (
           <div
             key={p.id}
+            role="tab"
+            aria-selected={active}
+            tabIndex={0}
             data-testid={`page-tab-${p.id}`}
             data-active={active || undefined}
             className={cn(
-              "group/tab relative flex shrink-0 cursor-pointer items-center gap-1 rounded-t-md border border-b-0 px-3 py-1.5 text-xs font-medium transition-colors",
+              "group/tab relative flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
               active
-                ? "border-border bg-card text-foreground"
-                : "border-transparent text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
             )}
-            onClick={() => {
-              if (!active && renamingId !== p.id) {
-                switchPage(p.id, {
-                  origin: "human",
-                  label: `Switched to page \u201c${p.name}\u201d`,
-                });
+            onClick={() => activate(p.id, p.name)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                activate(p.id, p.name);
               }
             }}
             onDoubleClick={() => {
@@ -95,7 +109,7 @@ export function PageTabs() {
               <button
                 aria-label={`Remove page ${p.name}`}
                 className={cn(
-                  "flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-destructive",
+                  "flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-destructive focus-visible:opacity-100",
                   "group-hover/tab:opacity-100",
                 )}
                 onClick={(e) => {

@@ -10,7 +10,6 @@ import { buildDemoDoc } from "@/lib/demo";
 import { GridCanvas } from "@/components/canvas/grid-canvas";
 import { TopBar } from "@/components/chrome/top-bar";
 import { FilterBar } from "@/components/chrome/filter-bar";
-import { PageTabs } from "@/components/chrome/page-tabs";
 import { ActivityFeed } from "@/components/chrome/activity-feed";
 import { EmptyState } from "@/components/chrome/empty-state";
 import { ShellExtras } from "@/components/chrome/shell-extras";
@@ -108,7 +107,6 @@ export function StudioApp() {
             onToggleActivity={() => setActivityOpen((v) => !v)}
           />
         ) : null}
-        {!presentation ? <PageTabs /> : null}
         {!presentation ? <FilterBar /> : null}
         {!presentation ? <InsightTray /> : null}
         <main
