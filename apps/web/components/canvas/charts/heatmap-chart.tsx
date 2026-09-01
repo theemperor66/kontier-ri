@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { formatValue } from "@/lib/format";
 import {
   inkMix,
@@ -19,6 +19,19 @@ function toNum(v: unknown): number | null {
   return null;
 }
 
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+] as const;
+
+/** "2024-09" -> "Sep 24" (headers stay horizontal AND legible — A5). */
+function shortLabel(v: string): string {
+  const m = v.match(/^(\d{4})-(\d{2})/);
+  if (!m) return v;
+  const month = MONTHS[Number(m[2]) - 1];
+  return month ? `${month} ${m[1]!.slice(2)}` : v;
+}
+
 /** CSS-grid heatmap: xKey columns x yKey rows, cells shaded by value. */
 export function HeatmapChartView({
   data,
@@ -30,6 +43,7 @@ export function HeatmapChartView({
   activeValue,
 }: HeatmapViewProps) {
   const valueKey = seriesKeys.find((k) => k !== yKey) ?? seriesKeys[0];
+  const [hover, setHover] = useState<{ x: string; y: string } | null>(null);
 
   const model = useMemo(() => {
     if (!valueKey) return null;
@@ -70,8 +84,15 @@ export function HeatmapChartView({
   }
   const { xs, ys, cells, min, max } = model;
   const span = max - min;
-  // Many columns: rotate headers so "2024-09"-style labels stay readable.
-  const rotateHeaders = xs.length > 8;
+  // Crowded columns: keep headers HORIZONTAL, label every 2nd/3rd column
+  // (hovered column always shows its label; full text lives in the cell
+  // tooltip). Rotated labels were near-illegible at 100% zoom.
+  const labelStep = xs.length > 18 ? 3 : xs.length > 8 ? 2 : 1;
+  /** Dim cells outside the hovered row/column (cross-highlight). */
+  const hoverDim = (x: string, y: string): number => {
+    if (!hover) return 1;
+    return hover.x === x || hover.y === y ? 1 : 0.45;
+  };
 
   return (
     <div className="h-full w-full overflow-auto">
@@ -81,39 +102,38 @@ export function HeatmapChartView({
           gridTemplateColumns: `minmax(76px, auto) repeat(${xs.length}, minmax(24px, 1fr))`,
           gridTemplateRows: `auto repeat(${ys.length}, minmax(20px, 1fr))`,
         }}
+        onMouseLeave={() => setHover(null)}
       >
         <div />
-        {xs.map((x) => (
-          <button
-            key={`cx-${x}`}
-            type="button"
-            title={x}
-            className={`text-[10px] text-muted-foreground ${onItemClick ? "cursor-pointer hover:text-foreground" : "cursor-default"} ${
-              rotateHeaders
-                ? "flex max-h-14 items-end justify-center overflow-hidden pb-0.5"
-                : "truncate px-0.5 text-center"
-            }`}
-            onClick={() => onItemClick?.({ column: xKey, value: x })}
-          >
-            {rotateHeaders ? (
-              <span
-                className="inline-block whitespace-nowrap text-[9px] leading-none"
-                style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-              >
-                {x}
-              </span>
-            ) : (
-              x
-            )}
-          </button>
-        ))}
+        {xs.map((x, i) => {
+          const showLabel = i % labelStep === 0 || hover?.x === x;
+          return (
+            <button
+              key={`cx-${x}`}
+              type="button"
+              title={x}
+              className={`overflow-hidden whitespace-nowrap px-0.5 pb-0.5 text-center text-[10px] leading-tight transition-colors ${
+                hover?.x === x
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground"
+              } ${onItemClick ? "cursor-pointer hover:text-foreground" : "cursor-default"}`}
+              onClick={() => onItemClick?.({ column: xKey, value: x })}
+            >
+              {showLabel ? shortLabel(x) : "\u00a0"}
+            </button>
+          );
+        })}
         {ys.map((y) => (
           <Fragment key={`row-${y}`}>
             <button
               key={`ry-${y}`}
               type="button"
               title={y}
-              className={`truncate pr-1.5 text-right text-[10px] leading-tight text-muted-foreground ${onItemClick ? "cursor-pointer hover:text-foreground" : "cursor-default"} self-center`}
+              className={`truncate pr-1.5 text-right text-[10px] leading-tight transition-colors ${
+                hover?.y === y
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground"
+              } ${onItemClick ? "cursor-pointer hover:text-foreground" : "cursor-default"} self-center`}
               onClick={() => onItemClick?.({ column: yKey, value: y })}
             >
               {y}
@@ -130,12 +150,13 @@ export function HeatmapChartView({
                       ? `${y} / ${x}: —`
                       : `${y} / ${x}: ${formatValue(v, valueFormat ?? "number")}`
                   }
-                  className={`group/cell relative rounded-[2px] ${onItemClick ? "cursor-pointer" : "cursor-default"} outline-offset-[-1px] hover:outline hover:outline-1 hover:outline-ring`}
+                  className={`group/cell relative rounded-[2px] transition-opacity duration-100 ${onItemClick ? "cursor-pointer" : "cursor-default"} outline-offset-[-1px] hover:outline hover:outline-1 hover:outline-ring`}
                   style={{
                     backgroundColor:
                       v == null ? "var(--muted)" : inkMix(frac),
-                    opacity: markOpacity(activeValue, x),
+                    opacity: markOpacity(activeValue, x) * hoverDim(x, y),
                   }}
+                  onMouseEnter={() => setHover({ x, y })}
                   onClick={() => onItemClick?.({ column: xKey, value: x })}
                 />
               );
