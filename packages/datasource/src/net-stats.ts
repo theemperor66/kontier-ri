@@ -44,7 +44,11 @@ export function buildNetStatsPreamble(channel: string = NET_STATS_CHANNEL): stri
         var body = xhr.response;
         if (body && typeof body.byteLength === "number") bytes = body.byteLength;
         else if (typeof body === "string") bytes = body.length;
-        if (!bytes) {
+        // Content-Length fallback only for bodied GETs: a HEAD probe (e.g.
+        // "Range: bytes=0-" capability checks) advertises the FULL size
+        // while transferring zero bytes — counting it would inflate the
+        // number by the dataset size per probe.
+        if (!bytes && xhr.__kontierNetMethod === "GET") {
           var len = xhr.getResponseHeader("Content-Length");
           if (len) bytes = parseInt(len, 10) || 0;
         }
@@ -57,7 +61,10 @@ export function buildNetStatsPreamble(channel: string = NET_STATS_CHANNEL): stri
     };
     var __kontierNetOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url) {
-      try { this.__kontierNetUrl = String(url); } catch (e) {}
+      try {
+        this.__kontierNetUrl = String(url);
+        this.__kontierNetMethod = String(method).toUpperCase();
+      } catch (e) {}
       return __kontierNetOpen.apply(this, arguments);
     };
     var __kontierNetSend = XMLHttpRequest.prototype.send;

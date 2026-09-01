@@ -31,8 +31,9 @@ const URLS = [
   "https://example.github.io/data/month=2024-02/part-0.parquet",
 ];
 
-/** Queue the 3 engine calls registerRemoteParquet makes: view, count, describe. */
+/** Queue the 4 engine calls registerRemoteParquet makes: SET cache, view, count, describe. */
 function queueRegistration(ds: FakeDuckDBDataSource, rowCount: number): void {
+  ds.queueResponse([], []); // SET enable_http_metadata_cache
   ds.queueResponse([], []); // CREATE VIEW
   ds.queueResponse([col("n")], [[rowCount]]); // count(*)
   ds.queueResponse(
@@ -51,11 +52,12 @@ describe("DuckDBDataSource.registerRemoteParquet", () => {
 
     const meta = await ds.registerRemoteParquet("scale_events", URLS);
 
-    expect(ds.executed[0]).toContain('CREATE OR REPLACE VIEW "scale_events"');
-    expect(ds.executed[0]).toContain(
+    expect(ds.executed[0]).toContain("SET enable_http_metadata_cache=true");
+    expect(ds.executed[1]).toContain('CREATE OR REPLACE VIEW "scale_events"');
+    expect(ds.executed[1]).toContain(
       `read_parquet(['${URLS[0]}', '${URLS[1]}'], hive_partitioning=1)`,
     );
-    expect(ds.executed[1]).toContain('count(*)::DOUBLE');
+    expect(ds.executed[2]).toContain('count(*)::DOUBLE');
     expect(meta.rowCount).toBe(100_000_000);
     expect(meta.group).toBe("remote");
     expect(meta.columns.map((c) => c.name)).toEqual(["event_ts", "month"]);
@@ -74,7 +76,7 @@ describe("DuckDBDataSource.registerRemoteParquet", () => {
       description: "one file",
       hivePartitioning: false,
     });
-    expect(ds.executed[0]).toContain("hive_partitioning=0");
+    expect(ds.executed[1]).toContain("hive_partitioning=0");
     expect(meta.group).toBe("warehouse");
     expect(meta.description).toBe("one file");
   });

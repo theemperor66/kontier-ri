@@ -161,6 +161,23 @@ export class DuckDBDataSource implements DataSource {
         const worker = new Worker(workerUrl);
         const db = new mod.AsyncDuckDB(new mod.ConsoleLogger(this.logLevel), worker);
         await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+        // Boot-time filesystem config (must happen before any file is open;
+        // open() resets the catalog — which is empty right here).
+        // duckdb-wasm 1.32 ships with forceFullHTTPReads effectively ON, so
+        // every remote parquet is downloaded whole regardless of server
+        // Range support (verified: 0 partial responses, ~500 MB moved for a
+        // count(*)). Turning it off restores the probe chain — GET with
+        // `Range: bytes=0-0` (real 206) plus a HEAD fallback for the total
+        // size (reliableHeadRequests=false, since GitHub Pages/Fastly
+        // answer HEAD-with-Range with 200) — after which the same count(*)
+        // moves ~16 KB of parquet footer per file.
+        await db.open({
+          filesystem: {
+            allowFullHTTPReads: true,
+            forceFullHTTPReads: false,
+            reliableHeadRequests: false,
+          },
+        });
         URL.revokeObjectURL(workerUrl);
         return db;
       })();
@@ -310,6 +327,9 @@ export class DuckDBDataSource implements DataSource {
     }
     const hive = options.hivePartitioning ?? true;
     const list = urls.map((u) => `'${u}'`).join(", ");
+    // Cache parquet footer metadata across queries: every query re-opens
+    // the remote files, and without this each one re-fetches all footers.
+    await this.exec(`SET enable_http_metadata_cache=true`);
     await this.exec(
       `CREATE OR REPLACE VIEW ${quoteIdent(name)} AS SELECT * FROM read_parquet([${list}], hive_partitioning=${hive ? 1 : 0})`,
     );
