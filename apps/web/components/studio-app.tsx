@@ -16,6 +16,8 @@ import { ShellExtras } from "@/components/chrome/shell-extras";
 import { AgentCursor } from "@/components/presence/agent-cursor";
 import { InsightTray } from "@/components/presence/insight-tray";
 import { PlanCard } from "@/components/presence/plan-card";
+import { TileInspectorMount } from "@/components/inspector/tile-inspector";
+import { useInspectorState } from "@/components/inspector/state";
 import { useUiState } from "@/lib/ui-state";
 import { cn } from "@/lib/utils";
 
@@ -91,6 +93,9 @@ export function StudioApp() {
   const resolvedTheme = useDashboardStore((s) => s.doc.theme.mode);
   // Presentation mode (F): chrome hidden, tiles full-bleed.
   const presentation = useUiState((s) => s.presentation);
+  // Tile inspector (docked right panel): pad the canvas while it is open.
+  const inspectorOpen = useInspectorState((s) => s.open);
+  const hasSelection = useDashboardStore((s) => s.selectedTileId != null);
 
   return (
     <DataProvider>
@@ -113,6 +118,7 @@ export function StudioApp() {
           className={cn(
             "min-h-0 flex-1 transition-[padding] duration-300",
             !presentation && activityOpen && "lg:pr-80",
+            !presentation && inspectorOpen && hasSelection && "lg:pr-[21rem]",
           )}
         >
           <CanvasArea />
@@ -125,6 +131,7 @@ export function StudioApp() {
       <PlanCard />
       <AgentCursor />
       <ShellExtras />
+      <TileInspectorMount />
       <Toaster
         position="bottom-right"
         theme={resolvedTheme}
