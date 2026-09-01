@@ -81,6 +81,7 @@ function buildRevenueOverview(mode: "dark" | "light"): DashboardDoc {
           chartType: "line",
           xKey: "month",
           analytics: { trendline: true },
+          format: { value: "currency" },
         },
       },
       {
@@ -95,6 +96,7 @@ function buildRevenueOverview(mode: "dark" | "light"): DashboardDoc {
           chartType: "bar",
           stacked: true,
           xKey: "month",
+          format: { value: "currency" },
         },
       },
       {

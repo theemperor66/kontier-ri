@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ChartBar,
   ChartBarHorizontal,
@@ -150,15 +151,18 @@ function ChartTypeSwitcher({ tile }: { tile: Tile }) {
       >
         <CurrentIcon className="size-3.5" />
       </Button>
-      {open && anchor ? (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label="Chart type"
-          className="fixed z-50 flex min-w-36 flex-col rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
-          style={{ top: anchor.top, right: anchor.right }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
+      {open && anchor
+        ? // Portal: tiles carry a transform (enter animation), which would
+          // turn them into the containing block for position:fixed.
+          createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              aria-label="Chart type"
+              className="fixed z-50 flex min-w-36 flex-col rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+              style={{ top: anchor.top, right: anchor.right }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
           {types.map((t) => {
             const meta: ChartTypeMeta | undefined = CHART_TYPE_META[t];
             if (!meta) return null;
@@ -198,8 +202,10 @@ function ChartTypeSwitcher({ tile }: { tile: Tile }) {
               </button>
             );
           })}
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

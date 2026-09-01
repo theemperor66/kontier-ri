@@ -112,7 +112,7 @@ export function HeatmapChartView({
               key={`cx-${x}`}
               type="button"
               title={x}
-              className={`overflow-hidden whitespace-nowrap px-0.5 pb-0.5 text-center text-[10px] leading-tight transition-colors ${
+              className={`overflow-visible whitespace-nowrap px-0.5 pb-0.5 text-center text-[10px] leading-tight transition-colors ${
                 hover?.x === x
                   ? "font-medium text-foreground"
                   : "text-muted-foreground"

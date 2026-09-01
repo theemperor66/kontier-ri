@@ -208,7 +208,10 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .tile-enter {
-  animation: tile-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  /* U5: `both` keeps the tile hidden through its stagger delay
+     (--tile-enter-delay is set per tile by grid-canvas, 40ms cascade). */
+  animation: tile-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--tile-enter-delay, 0s);
 }
 
 @keyframes status-pulse {
@@ -240,7 +243,7 @@
 }
 .recharts-brush .recharts-brush-slide {
   fill: var(--chart-3);
-  fill-opacity: 0.16;
+  fill-opacity: 0.12;
   stroke: color-mix(in oklab, var(--chart-3) 40%, transparent);
 }
 .recharts-brush-texts text {
@@ -277,13 +280,64 @@
   will-change: transform;
 }
 
+/* --- U4/U5/U6: chrome menus, theme cross-fade, focus visibility --------- */
+
+/* Dropdown menu entrance (Share / overflow in the top bar). */
+@keyframes menu-enter {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.menu-enter {
+  animation: menu-enter 0.14s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Theme switch cross-fade (A8): Chromium snapshots old/new via the View
+   Transitions API — 240ms, no flash. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Fallback for engines without View Transitions: while the toggle handler
+   holds `theme-fade` on <html> (~360ms window), color-ish properties tween
+   instead of hard-swapping. */
+html.theme-fade,
+html.theme-fade *,
+html.theme-fade *::before,
+html.theme-fade *::after {
+  transition:
+    background-color 240ms ease,
+    border-color 240ms ease,
+    color 240ms ease,
+    fill 240ms ease,
+    stroke 240ms ease,
+    box-shadow 240ms ease !important;
+}
+
+/* U6: visible keyboard focus everywhere (Kontier ring token). Lives in the
+   base layer so components that declare their own focus-visible treatment
+   (Button's ring + outline-none) still win. */
+@layer base {
+  :where(a, button, input, select, textarea, summary,
+      [role="button"], [role="menuitem"], [role="tab"], [tabindex]):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none !important;
   }
 }
