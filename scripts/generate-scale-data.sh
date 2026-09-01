@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Generate the kontier-ri 100M-row scale-proof dataset (billing_events).
-# 24 hive partitions (month=2024-01 .. month=2025-12), ZSTD, row groups of 1M rows.
-# Requires the DuckDB CLI (`brew install duckdb`). Deterministic via per-month setseed.
+# 8 hive partitions (quarter=2024-Q1 .. quarter=2025-Q4), ZSTD, row groups of
+# 4M rows. Month-over-month linear growth is preserved inside each quarter
+# file (3 month blocks, sorted by event_ts). Quarterly (not monthly) files
+# keep every file under GitHub's 100 MB limit while minimizing the per-file
+# open/probe roundtrips that dominate DuckDB-WASM's sync-XHR latency.
+# Requires the DuckDB CLI (`brew install duckdb`). Deterministic via setseed.
 #
 # Usage: ./scripts/generate-scale-data.sh [OUT_DIR] [TOTAL_ROWS]
 set -euo pipefail
@@ -23,21 +27,10 @@ print(" ".join(map(str, counts)))
 PY
 )"
 
-GRAND_TOTAL=0
-for m in $(seq 0 $((MONTHS - 1))); do
-  MONTH=$(python3 -c "import sys;y,mo=2024+int(sys.argv[1])//12,int(sys.argv[1])%12+1;print(f'{y}-{mo:02d}')" "$m")
-  N=${COUNTS[$m]}
-  GRAND_TOTAL=$((GRAND_TOTAL + N))
-  DIR="$OUT_DIR/events/month=$MONTH"
-  FILE="$DIR/part-0.parquet"
-  if [ -f "$FILE" ]; then echo "skip $MONTH (exists)"; continue; fi
-  mkdir -p "$DIR"
-  SEED=$(python3 -c "print(($m + 1) / 100)")
-  echo "generating month=$MONTH rows=$N ..."
-  duckdb -c "
-SET threads=10;
-SELECT setseed($SEED);
-COPY (
+# One SELECT block for one month of synthetic events ($1=YYYY-MM, $2=rows).
+month_block() {
+  local MONTH="$1" N="$2"
+  cat <<SQL
   SELECT
     event_ts,
     customer_id,
@@ -72,17 +65,46 @@ COPY (
       random() AS r_status
     FROM (SELECT unnest(generate_series(1::BIGINT, ${N}::BIGINT)) AS i)
   )
+SQL
+}
+
+GRAND_TOTAL=0
+for q in $(seq 0 7); do
+  YEAR=$((2024 + q / 4))
+  QNUM=$((q % 4 + 1))
+  QUARTER="${YEAR}-Q${QNUM}"
+  DIR="$OUT_DIR/events/quarter=$QUARTER"
+  FILE="$DIR/part-0.parquet"
+  M0=$((q * 3))
+  N_SUM=$(( COUNTS[M0] + COUNTS[M0+1] + COUNTS[M0+2] ))
+  GRAND_TOTAL=$((GRAND_TOTAL + N_SUM))
+  if [ -f "$FILE" ]; then echo "skip $QUARTER (exists)"; continue; fi
+  mkdir -p "$DIR"
+  BLOCKS=""
+  for i in 0 1 2; do
+    M=$((M0 + i))
+    MONTH=$(python3 -c "import sys;m=int(sys.argv[1]);print(f'{2024+m//12}-{m%12+1:02d}')" "$M")
+    [ -n "$BLOCKS" ] && BLOCKS="$BLOCKS UNION ALL "
+    BLOCKS="$BLOCKS $(month_block "$MONTH" "${COUNTS[$M]}")"
+  done
+  SEED=$(python3 -c "print(($q + 1) / 10)")
+  echo "generating quarter=$QUARTER rows=$N_SUM ..."
+  duckdb -c "
+SET threads=10;
+SELECT setseed($SEED);
+COPY (
+  SELECT * FROM ( $BLOCKS )
   ORDER BY event_ts
-) TO '$FILE' (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 1000000);
+) TO '$FILE' (FORMAT PARQUET, COMPRESSION ZSTD, ROW_GROUP_SIZE 4000000);
 "
 done
 
 echo "grand total rows: $GRAND_TOTAL"
 echo "verifying with DuckDB ..."
 duckdb -c "
-SELECT count(*) AS total_rows FROM read_parquet('$OUT_DIR/events/month=*/part-0.parquet', hive_partitioning=1);
+SELECT count(*) AS total_rows FROM read_parquet('$OUT_DIR/events/quarter=*/part-0.parquet', hive_partitioning=1);
 SELECT country, ROUND(SUM(amount_cents)/100.0/1e6, 1) AS revenue_m, count(*) AS n
-FROM read_parquet('$OUT_DIR/events/month=*/part-0.parquet', hive_partitioning=1)
+FROM read_parquet('$OUT_DIR/events/quarter=*/part-0.parquet', hive_partitioning=1)
 WHERE status = 'succeeded' GROUP BY country ORDER BY revenue_m DESC;
 "
 du -sh "$OUT_DIR/events"
