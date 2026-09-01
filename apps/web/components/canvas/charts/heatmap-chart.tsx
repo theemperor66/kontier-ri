@@ -106,7 +106,14 @@ export function HeatmapChartView({
       >
         <div />
         {xs.map((x, i) => {
-          const showLabel = i % labelStep === 0 || hover?.x === x;
+          // Hover reveals the hovered column's label; drop step-labels within
+          // one column of it so the two never overlap.
+          const hoverIdx = hover ? xs.indexOf(hover.x) : -1;
+          const showLabel =
+            hoverIdx >= 0
+              ? x === hover!.x ||
+                (i % labelStep === 0 && Math.abs(i - hoverIdx) > 1)
+              : i % labelStep === 0;
           return (
             <button
               key={`cx-${x}`}
