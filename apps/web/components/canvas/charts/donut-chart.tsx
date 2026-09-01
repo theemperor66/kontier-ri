@@ -9,12 +9,8 @@ import {
   Tooltip as RechartsTooltip,
 } from "recharts";
 import { formatValue } from "@/lib/format";
-import {
-  markOpacity,
-  tooltipValueFormatter,
-  TOOLTIP_STYLE,
-  type BaseChartProps,
-} from "./common";
+import { markOpacity, type BaseChartProps } from "./common";
+import { chartTooltip } from "./chart-tooltip";
 
 /** Donut with a centered total; slices emit cross-filter clicks. */
 export function DonutChartView({
@@ -70,8 +66,12 @@ export function DonutChartView({
             ))}
           </Pie>
           <RechartsTooltip
-            contentStyle={TOOLTIP_STYLE}
-            formatter={tooltipValueFormatter(valueFormat)}
+            content={chartTooltip({
+              share: true,
+              total: total ?? undefined,
+              formatFor: () => valueFormat,
+              labelFor: (_k, name) => name,
+            })}
           />
         </PieChart>
       </ResponsiveContainer>

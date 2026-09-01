@@ -16,10 +16,9 @@ import {
   axisTickFormatter,
   axisWidth,
   markOpacity,
-  tooltipValueFormatter,
-  TOOLTIP_STYLE,
   type BaseChartProps,
 } from "./common";
+import { chartTooltip } from "./chart-tooltip";
 
 export interface ComboSeriesConfig {
   key: string;
@@ -91,14 +90,15 @@ export function ComboChartView({
           />
         ) : null}
         <RechartsTooltip
-          contentStyle={TOOLTIP_STYLE}
+          content={chartTooltip({
+            formatFor: (key) => {
+              const cfg = configs.find((c) => c.key === key);
+              return cfg?.axis === "right"
+                ? (y2Format ?? valueFormat)
+                : valueFormat;
+            },
+          })}
           cursor={{ opacity: 0.2 }}
-          formatter={(v: unknown, name: unknown) => {
-            const cfg = configs.find((c) => c.key === name);
-            const fmt =
-              cfg?.axis === "right" ? (y2Format ?? valueFormat) : valueFormat;
-            return tooltipValueFormatter(fmt)(v);
-          }}
         />
         {configs.map((cfg, i) =>
           cfg.type === "line" ? (

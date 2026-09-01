@@ -15,11 +15,10 @@ import {
   axisTickFormatter,
   axisWidth,
   markOpacity,
-  tooltipValueFormatter,
-  TOOLTIP_STYLE,
   TREND_KEY,
   type BaseChartProps,
 } from "./common";
+import { chartTooltip } from "./chart-tooltip";
 import { linearRegression } from "./regression";
 
 interface ScatterViewProps extends BaseChartProps {
@@ -91,6 +90,7 @@ export function ScatterChartView({
           tickLine={false}
           axisLine={false}
           minTickGap={24}
+          tickFormatter={numericX ? axisTickFormatter("number") : undefined}
         />
         <YAxis
           tickLine={false}
@@ -99,8 +99,9 @@ export function ScatterChartView({
           tickFormatter={axisTickFormatter(valueFormat)}
         />
         <RechartsTooltip
-          contentStyle={TOOLTIP_STYLE}
-          formatter={tooltipValueFormatter(valueFormat)}
+          content={chartTooltip({
+            formatFor: (key) => (key === xKey ? "number" : valueFormat),
+          })}
           cursor={{ strokeDasharray: "3 3" }}
         />
         {seriesKeys.map((k, i) => (

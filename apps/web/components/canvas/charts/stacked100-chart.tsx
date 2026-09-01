@@ -11,12 +11,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { formatValue } from "@/lib/format";
-import {
-  markOpacity,
-  TOOLTIP_STYLE,
-  type BaseChartProps,
-} from "./common";
+import { markOpacity, type BaseChartProps } from "./common";
+import { chartTooltip } from "./chart-tooltip";
 
 /** 100%-stacked bars: each x bucket normalized to fractions of its total. */
 export function Stacked100ChartView({
@@ -72,11 +68,8 @@ export function Stacked100ChartView({
           tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
         />
         <RechartsTooltip
-          contentStyle={TOOLTIP_STYLE}
+          content={chartTooltip({ formatFor: () => "percent" })}
           cursor={{ opacity: 0.2 }}
-          formatter={(v: unknown) =>
-            typeof v === "number" ? formatValue(v, "percent") : String(v)
-          }
         />
         {seriesKeys.map((k, i) => (
           <Bar

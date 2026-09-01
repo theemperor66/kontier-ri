@@ -9,12 +9,8 @@ import {
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
 } from "recharts";
-import {
-  axisTickFormatter,
-  tooltipValueFormatter,
-  TOOLTIP_STYLE,
-  type BaseChartProps,
-} from "./common";
+import { axisTickFormatter, type BaseChartProps } from "./common";
+import { chartTooltip } from "./chart-tooltip";
 
 /** Radar / spider chart over the xKey categories. */
 export function RadarChartView({
@@ -40,8 +36,7 @@ export function RadarChartView({
           axisLine={false}
         />
         <RechartsTooltip
-          contentStyle={TOOLTIP_STYLE}
-          formatter={tooltipValueFormatter(valueFormat)}
+          content={chartTooltip({ formatFor: () => valueFormat })}
         />
         {seriesKeys.map((k, i) => (
           <Radar

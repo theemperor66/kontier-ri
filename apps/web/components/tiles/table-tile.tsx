@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { CaretLeft, CaretRight } from "@phosphor-icons/react";
 import type { TableSpec, Tile } from "@/lib/dashboard-store";
 import { useTileData } from "@/lib/use-tile-data";
-import { formatValue, resolveRuleColor } from "@/lib/format";
+import { formatValue, humanizeIdent, resolveRuleColor } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { useCrossFilterEmit } from "@/components/canvas/charts/common";
 import { TileError } from "./tile-error";
@@ -52,8 +52,12 @@ export function TableTile({ tile }: { tile: Tile }) {
           <thead className="sticky top-0 bg-card">
             <tr className="border-b text-left text-muted-foreground">
               {result.columns.map((c) => (
-                <th key={c.name} className="whitespace-nowrap py-1.5 pr-3 font-medium">
-                  {c.name}
+                <th
+                  key={c.name}
+                  title={c.name}
+                  className="whitespace-nowrap py-1.5 pr-3 font-medium"
+                >
+                  {humanizeIdent(c.name)}
                 </th>
               ))}
             </tr>

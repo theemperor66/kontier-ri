@@ -5,10 +5,10 @@
  * All series inks come from the Kontier chart tokens (var(--chart-N)).
  */
 
-import { useCallback, useState, type CSSProperties } from "react";
+import { useCallback, useState } from "react";
 import type { CrossFilter } from "@kontier-ri/studio";
 import type { FormatOptions, ValueFormat } from "@/lib/format";
-import { formatAxisTick, formatValue } from "@/lib/format";
+import { formatAxisTick, prettifySeriesLabel } from "@/lib/format";
 import { useDashboardStore } from "@/lib/dashboard-store";
 
 export const CHART_PALETTE = [
@@ -19,13 +19,10 @@ export const CHART_PALETTE = [
   "var(--chart-5)",
 ] as const;
 
-export const TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: "var(--popover)",
-  border: "1px solid var(--border)",
-  borderRadius: 8,
-  fontSize: 12,
-  color: "var(--popover-foreground)",
-};
+/** Legend formatter: SQL aliases render as human words (A2). */
+export function legendLabelFormatter(value: unknown): React.ReactNode {
+  return prettifySeriesLabel(String(value ?? ""));
+}
 
 /** Injected series key that carries the computed trendline. */
 export const TREND_KEY = "__trend";
@@ -51,13 +48,6 @@ export interface BaseChartProps {
   activeValue?: unknown;
   /** Series hidden via legend toggle. */
   hiddenKeys?: ReadonlySet<string>;
-}
-
-export function tooltipValueFormatter(
-  valueFormat?: ValueFormat | FormatOptions,
-) {
-  return (v: unknown): string =>
-    typeof v === "number" ? formatValue(v, valueFormat ?? "number") : String(v);
 }
 
 export function axisTickFormatter(valueFormat?: ValueFormat | FormatOptions) {

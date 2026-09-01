@@ -13,10 +13,9 @@ import {
 import {
   axisTickFormatter,
   markOpacity,
-  tooltipValueFormatter,
-  TOOLTIP_STYLE,
   type BaseChartProps,
 } from "./common";
+import { chartTooltip } from "./chart-tooltip";
 
 interface HBarViewProps extends BaseChartProps {
   /** Conditional bar fill from spec.format.rules (first series only). */
@@ -73,9 +72,11 @@ export function HBarChartView({
           interval={0}
         />
         <RechartsTooltip
-          contentStyle={TOOLTIP_STYLE}
+          content={chartTooltip({
+            formatFor: () => valueFormat,
+            share: stacked === true && seriesKeys.length > 1,
+          })}
           cursor={{ opacity: 0.2 }}
-          formatter={tooltipValueFormatter(valueFormat)}
         />
         {seriesKeys.map((k, i) => (
           <Bar

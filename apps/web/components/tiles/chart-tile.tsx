@@ -28,13 +28,13 @@ import {
   axisTickFormatter,
   axisWidth,
   CHART_PALETTE,
+  legendLabelFormatter,
   markOpacity,
-  tooltipValueFormatter,
-  TOOLTIP_STYLE,
   TREND_KEY,
   useCrossFilterEmit,
   useHiddenSeries,
 } from "@/components/canvas/charts/common";
+import { chartTooltip } from "@/components/canvas/charts/chart-tooltip";
 import { withTrend } from "@/components/canvas/charts/regression";
 import { ScatterChartView } from "@/components/canvas/charts/scatter-chart";
 import { ComboChartView } from "@/components/canvas/charts/combo-chart";
@@ -52,6 +52,16 @@ function toPlottable(v: unknown): unknown {
     return v.match(/^-?\d+(\.\d+)?$/) ? Number(v) : v;
   }
   return v;
+}
+
+/** Whole-pie total so slice tooltips can show % of total. */
+function pieTotal(rows: Record<string, unknown>[], key: string): number {
+  let sum = 0;
+  for (const r of rows) {
+    const v = r[key];
+    if (typeof v === "number" && Number.isFinite(v)) sum += v;
+  }
+  return sum;
 }
 
 function isNumericType(type: string): boolean {
@@ -205,6 +215,7 @@ export function ChartTile({ tile }: { tile: Tile }) {
       onClick={(entry: { dataKey?: unknown; value?: unknown }) =>
         toggle(typeof entry.dataKey === "string" ? entry.dataKey : entry.value)
       }
+      formatter={legendLabelFormatter}
       wrapperStyle={{ fontSize: 11, cursor: "pointer" }}
       iconSize={8}
     />
@@ -327,8 +338,12 @@ export function ChartTile({ tile }: { tile: Tile }) {
             ))}
           </Pie>
           <RechartsTooltip
-            contentStyle={TOOLTIP_STYLE}
-            formatter={tooltipValueFormatter(valueFormat)}
+            content={chartTooltip({
+              share: true,
+              total: pieTotal(data, valueKey),
+              formatFor: () => valueFormat,
+              labelFor: (_k, name) => name,
+            })}
           />
         </PieChart>
       </ResponsiveContainer>
@@ -352,9 +367,11 @@ export function ChartTile({ tile }: { tile: Tile }) {
         tickFormatter={axisTickFormatter(valueFormat)}
       />
       <RechartsTooltip
-        contentStyle={TOOLTIP_STYLE}
+        content={chartTooltip({
+          formatFor: () => valueFormat,
+          share: spec.stacked === true && seriesKeys.length > 1,
+        })}
         cursor={{ opacity: 0.2 }}
-        formatter={tooltipValueFormatter(valueFormat)}
       />
     </>
   );

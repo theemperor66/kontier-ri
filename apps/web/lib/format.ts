@@ -97,6 +97,93 @@ export function formatCompact(value: number): string {
   }).format(value);
 }
 
+// ---------------------------------------------------------------------------
+// Friendly labels (A2): SQL aliases -> human words, everywhere labels render.
+// ---------------------------------------------------------------------------
+
+/** Tokens that should render uppercase inside humanized identifiers. */
+const LABEL_ACRONYMS = new Set([
+  "eur",
+  "usd",
+  "gbp",
+  "chf",
+  "mrr",
+  "arr",
+  "arpu",
+  "ltv",
+  "id",
+  "api",
+  "vat",
+  "iban",
+  "url",
+]);
+
+const CURRENCY_CODES = new Set(["eur", "usd", "gbp", "chf"]);
+
+function labelToken(token: string, first: boolean): string {
+  const t = token.toLowerCase();
+  if (LABEL_ACRONYMS.has(t)) return t.toUpperCase();
+  if (first) return t.charAt(0).toUpperCase() + t.slice(1);
+  return t;
+}
+
+/**
+ * Humanize a snake_case identifier: `failure_code` -> "Failure code",
+ * `amount_eur` -> "Amount (EUR)", `mrr_eur` -> "MRR (EUR)".
+ */
+export function humanizeIdent(name: string): string {
+  const tokens = name
+    .replace(/[_\s]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+  if (tokens.length === 0) return name;
+  // Trailing currency code reads best in parens: "Revenue (EUR)".
+  const last = tokens[tokens.length - 1]!.toLowerCase();
+  const currencyTail = tokens.length > 1 && CURRENCY_CODES.has(last);
+  const words = (currencyTail ? tokens.slice(0, -1) : tokens).map((t, i) =>
+    labelToken(t, i === 0),
+  );
+  const base = words.join(" ");
+  return currencyTail ? `${base} (${last.toUpperCase()})` : base;
+}
+
+const AGG_ALIAS_RE =
+  /^(sum|avg|min|max|median|count_distinct|count)_(.+)$/;
+
+/**
+ * Friendly series/legend label for a measure alias or column name:
+ * `sum_amount_eur` -> "Amount (EUR)", `avg_amount_eur` -> "Avg amount (EUR)",
+ * `count` -> "Count", `count_distinct_customer_id` -> "Unique customer ID".
+ */
+export function prettifySeriesLabel(key: string): string {
+  if (key === "count") return "Count";
+  const m = key.match(AGG_ALIAS_RE);
+  if (!m) return humanizeIdent(key);
+  const agg = m[1]!;
+  const base = humanizeIdent(m[2]!);
+  // Keep leading acronyms intact ("MRR (EUR)" must not become "mRR (EUR)").
+  const lower = /^[A-Z]{2,}/.test(base)
+    ? base
+    : base.charAt(0).toLowerCase() + base.slice(1);
+  switch (agg) {
+    case "sum":
+      return base;
+    case "avg":
+      return `Avg ${lower}`;
+    case "min":
+      return `Min ${lower}`;
+    case "max":
+      return `Max ${lower}`;
+    case "median":
+      return `Median ${lower}`;
+    case "count_distinct":
+      return `Unique ${lower}`;
+    default:
+      return base;
+  }
+}
+
 /** Relative delta vs a previous value, e.g. +4.2%. Returns null when unknown. */
 export function formatDelta(
   value: number | null | undefined,
