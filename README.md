@@ -18,7 +18,7 @@ chart editors. Agents guessing their way through that UI fail; a headless API
 loses the human. WebMCP is the architecture where the agent operates the *same
 live document* the human is looking at:
 
-- **The agent has hands.** 32 static + 3 selection-scoped WebMCP tools:
+- **The agent has hands.** 36 static + 3 selection-scoped WebMCP tools:
   query datasets, add/edit/move tiles, set filters, annotate charts.
 - **The human stays in control.** Every agent edit is attributed (tiles glow,
   activity feed), undoable (Cmd+Z works on agent commands), and guarded by a
@@ -40,7 +40,7 @@ live document* the human is looking at:
 - **⌘K command palette**, presentation mode, PNG/CSV export, share-URLs, autosave persistence
 - **Scale**: aggregate **100 million rows live in your browser** — DuckDB-WASM streams only the parquet row groups it needs (~15% of a 511MB dataset) over HTTP ranges
 - **Agent presence**: Kai's plan card, proactive insight chips, and a visible cursor — every move a real WebMCP tool call
-- **39 WebMCP tools** (32 static + 3 selection-scoped) — every one of these features is agent-operable
+- **39 WebMCP tools** (36 static + 3 selection-scoped) — every one of these features is agent-operable
 
 ## 60-second quickstart
 
@@ -62,7 +62,7 @@ No sign-up, no backend, no credentials — everything runs in the page.
 
 ## Tool catalog
 
-35 tools, registered from the page via `document.modelContext`
+39 tools, registered from the page via `document.modelContext`
 (feature-detecting `navigator.modelContext`). Full contracts:
 [docs/TOOLS.md](docs/TOOLS.md).
 
