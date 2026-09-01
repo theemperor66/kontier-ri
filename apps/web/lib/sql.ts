@@ -224,3 +224,181 @@ export function buildTableQuery(
     fallbackSQL: spec.sql,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Client-side sorting (table header sort) — wrap the built query
+// ---------------------------------------------------------------------------
+
+export interface SortSpec {
+  column: string;
+  dir: "asc" | "desc";
+}
+
+/** Wrap a built query so its OUTPUT columns can be re-ordered. */
+export function wrapOrderBy(sql: string, sort: SortSpec): string {
+  const inner = sql.trim().replace(/;\s*$/, "");
+  const dir = sort.dir === "desc" ? "DESC" : "ASC";
+  return `SELECT * FROM (${inner}) __sorted ORDER BY ${quoteIdent(sort.column)} ${dir} NULLS LAST`;
+}
+
+// ---------------------------------------------------------------------------
+// Temporal granularity (tile-header month/quarter/week select)
+// ---------------------------------------------------------------------------
+
+export type TimeGrain = "month" | "quarter" | "week";
+
+/**
+ * The rewrite family: every grain is expressed over the SAME inner date
+ * expression, so switching grains is a lossless in-place substitution.
+ * DuckDB strftime has no quarter code, hence the concat form.
+ */
+export function timeGrainExpr(inner: string, grain: TimeGrain): string {
+  if (grain === "quarter") {
+    return `concat(strftime(${inner}, '%Y'), '-Q', quarter(${inner}))`;
+  }
+  const fmt = grain === "week" ? "'%Y-W%W'" : "'%Y-%m'";
+  return `strftime(${inner}, ${fmt})`;
+}
+
+interface SqlCall {
+  start: number;
+  end: number;
+  args: string[];
+}
+
+/** Top-level comma split, respecting '...' strings and nested parens. */
+function splitTopLevel(argsStr: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let inStr = false;
+  let cur = "";
+  for (const ch of argsStr) {
+    if (inStr) {
+      cur += ch;
+      if (ch === "'") inStr = false;
+      continue;
+    }
+    if (ch === "'") {
+      inStr = true;
+      cur += ch;
+      continue;
+    }
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    if (ch === "," && depth === 0) {
+      parts.push(cur.trim());
+      cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  const last = cur.trim();
+  if (last) parts.push(last);
+  return parts;
+}
+
+/** All balanced `name(...)` calls in `sql` with their parsed arguments. */
+function findCalls(sql: string, name: string): SqlCall[] {
+  const out: SqlCall[] = [];
+  const re = new RegExp(`\\b${name}\\s*\\(`, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sql))) {
+    const openIdx = m.index + m[0].length - 1;
+    let depth = 0;
+    let inStr = false;
+    let end = -1;
+    for (let i = openIdx; i < sql.length; i++) {
+      const ch = sql[i]!;
+      if (inStr) {
+        if (ch === "'") inStr = false;
+        continue;
+      }
+      if (ch === "'") {
+        inStr = true;
+        continue;
+      }
+      if (ch === "(") depth++;
+      else if (ch === ")") {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (end < 0) continue;
+    out.push({
+      start: m.index,
+      end: end + 1,
+      args: splitTopLevel(sql.slice(openIdx + 1, end)),
+    });
+  }
+  return out;
+}
+
+interface GrainMatch {
+  start: number;
+  end: number;
+  inner: string;
+  grain: TimeGrain;
+}
+
+/** Whole-arg call check: `expr` is exactly `name(...)`. */
+function soleCall(expr: string, name: string): SqlCall | null {
+  const calls = findCalls(expr, name);
+  const c = calls[0];
+  return c && c.start === 0 && c.end === expr.length ? c : null;
+}
+
+function grainMatches(sql: string): GrainMatch[] {
+  const matches: GrainMatch[] = [];
+  // Quarter form first (its inner strftime must not double-match below).
+  for (const c of findCalls(sql, "concat")) {
+    if (c.args.length !== 3 || c.args[1] !== "'-Q'") continue;
+    const s = soleCall(c.args[0]!, "strftime");
+    const q = soleCall(c.args[2]!, "quarter");
+    if (
+      s &&
+      q &&
+      s.args.length === 2 &&
+      s.args[1] === "'%Y'" &&
+      q.args.length === 1 &&
+      q.args[0] === s.args[0]
+    ) {
+      matches.push({ start: c.start, end: c.end, inner: s.args[0]!, grain: "quarter" });
+    }
+  }
+  for (const c of findCalls(sql, "strftime")) {
+    if (matches.some((g) => c.start >= g.start && c.end <= g.end)) continue;
+    if (c.args.length !== 2) continue;
+    const grain =
+      c.args[1] === "'%Y-%m'"
+        ? ("month" as const)
+        : c.args[1] === "'%Y-W%W'"
+          ? ("week" as const)
+          : null;
+    if (grain) {
+      matches.push({ start: c.start, end: c.end, inner: c.args[0]!, grain });
+    }
+  }
+  return matches.sort((a, b) => a.start - b.start);
+}
+
+/**
+ * Detect the temporal granularity of a raw chart SQL: present when the SQL
+ * bins on one of the rewrite-family expressions (month strftime pattern,
+ * or a week/quarter form this module previously wrote).
+ */
+export function detectTimeGrain(sql: string): TimeGrain | null {
+  const g = grainMatches(sql);
+  return g.length > 0 ? g[0]!.grain : null;
+}
+
+/** Rewrite every grain expression in `sql` to `grain` (lossless family swap). */
+export function rewriteTimeGrain(sql: string, grain: TimeGrain): string {
+  let out = sql;
+  for (const g of grainMatches(sql).reverse()) {
+    out = out.slice(0, g.start) + timeGrainExpr(g.inner, grain) + out.slice(g.end);
+  }
+  return out;
+}

@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
 } from "recharts";
-import { axisTickFormatter, type BaseChartProps } from "./common";
+import { axisTickFormatter, chartContextMenu, type BaseChartProps } from "./common";
 import { chartTooltip } from "./chart-tooltip";
 
 /** Radar / spider chart over the xKey categories. */
@@ -20,11 +20,16 @@ export function RadarChartView({
   colorFor,
   valueFormat,
   hiddenKeys,
+  onItemContextMenu,
   children,
 }: BaseChartProps & { children?: React.ReactNode }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <RadarChart data={data} margin={{ top: 8, right: 16, bottom: 4, left: 16 }}>
+      <RadarChart
+        data={data}
+        margin={{ top: 8, right: 16, bottom: 4, left: 16 }}
+        onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
+      >
         <PolarGrid stroke="var(--border)" />
         <PolarAngleAxis
           dataKey={xKey}

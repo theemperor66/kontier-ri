@@ -14,7 +14,9 @@ import {
 import {
   axisTickFormatter,
   axisWidth,
+  chartContextMenu,
   markOpacity,
+  sectorContextMenu,
   TREND_KEY,
   type BaseChartProps,
 } from "./common";
@@ -44,6 +46,7 @@ export function ScatterChartView({
   colorFor,
   valueFormat,
   onItemClick,
+  onItemContextMenu,
   activeValue,
   hiddenKeys,
   trend,
@@ -80,7 +83,8 @@ export function ScatterChartView({
             onItemClick?.({ column: xKey, value: state.activeLabel });
           }
         }}
-        className={onItemClick ? "cursor-pointer" : undefined}
+        onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
+        className={onItemClick ? "cursor-crosshair" : undefined}
       >
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis
@@ -111,7 +115,8 @@ export function ScatterChartView({
             dataKey={k}
             fill={colorFor(i)}
             hide={hiddenKeys?.has(k)}
-            className={onItemClick ? "cursor-pointer" : undefined}
+            className={onItemClick ? "cursor-crosshair" : undefined}
+            onContextMenu={sectorContextMenu(xKey, onItemContextMenu) as never}
             onClick={(item: unknown) => {
               // recharts 3 spreads the datum into the item; payload is not
               // always present (Pie sectors, Scatter points).

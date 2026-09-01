@@ -40,6 +40,7 @@ export function HeatmapChartView({
   seriesKeys,
   valueFormat,
   onItemClick,
+  onItemContextMenu,
   activeValue,
 }: HeatmapViewProps) {
   const valueKey = seriesKeys.find((k) => k !== yKey) ?? seriesKeys[0];
@@ -157,7 +158,7 @@ export function HeatmapChartView({
                       ? `${y} / ${x}: —`
                       : `${y} / ${x}: ${formatValue(v, valueFormat ?? "number")}`
                   }
-                  className={`group/cell relative rounded-[2px] transition-opacity duration-100 ${onItemClick ? "cursor-pointer" : "cursor-default"} outline-offset-[-1px] hover:outline hover:outline-1 hover:outline-ring`}
+                  className={`group/cell relative rounded-[2px] transition-opacity duration-100 ${onItemClick ? "cursor-crosshair" : "cursor-default"} outline-offset-[-1px] hover:outline hover:outline-1 hover:outline-ring`}
                   style={{
                     backgroundColor:
                       v == null ? "var(--muted)" : inkMix(frac),
@@ -165,6 +166,15 @@ export function HeatmapChartView({
                   }}
                   onMouseEnter={() => setHover({ x, y })}
                   onClick={() => onItemClick?.({ column: xKey, value: x })}
+                  onContextMenu={(e) => {
+                    if (!onItemContextMenu) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onItemContextMenu(
+                      { column: xKey, value: x },
+                      { x: e.clientX, y: e.clientY },
+                    );
+                  }}
                 />
               );
             })}

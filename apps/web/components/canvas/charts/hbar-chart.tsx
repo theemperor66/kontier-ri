@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import {
   axisTickFormatter,
+  chartContextMenu,
   markOpacity,
   type BaseChartProps,
 } from "./common";
@@ -32,6 +33,7 @@ export function HBarChartView({
   colorFor,
   valueFormat,
   onItemClick,
+  onItemContextMenu,
   activeValue,
   hiddenKeys,
   ruleColorFor,
@@ -53,7 +55,8 @@ export function HBarChartView({
             onItemClick?.({ column: xKey, value: state.activeLabel });
           }
         }}
-        className={onItemClick ? "cursor-pointer" : undefined}
+        onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
+        className={onItemClick ? "cursor-crosshair" : undefined}
       >
         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
         <XAxis

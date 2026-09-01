@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Area,
   Bar,
@@ -28,12 +28,20 @@ import {
   axisTickFormatter,
   axisWidth,
   CHART_PALETTE,
-  legendLabelFormatter,
+  chartContextMenu,
+  legendToggleContent,
+  sectorContextMenu,
   markOpacity,
   TREND_KEY,
   useCrossFilterEmit,
   useHiddenSeries,
+  type MarkPoint,
+  type SeriesClick,
 } from "@/components/canvas/charts/common";
+import {
+  MarkMenu,
+  type MarkMenuTarget,
+} from "@/components/canvas/charts/mark-menu";
 import { chartTooltip } from "@/components/canvas/charts/chart-tooltip";
 import { withTrend } from "@/components/canvas/charts/regression";
 import { ScatterChartView } from "@/components/canvas/charts/scatter-chart";
@@ -112,7 +120,14 @@ export function ChartTile({ tile }: { tile: Tile }) {
   const setBrushedRange = useDashboardStore((s) => s.setBrushedRange);
   const { crossFilter, emit: handleItemClick } = useCrossFilterEmit(tile.id);
   const brushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { hidden, toggle } = useHiddenSeries();
+  const legendToggle = useHiddenSeries(tile.id);
+  const { hidden } = legendToggle;
+  const [markTarget, setMarkTarget] = useState<MarkMenuTarget | null>(null);
+  const openMarkMenu = useCallback(
+    (click: SeriesClick, at: MarkPoint) =>
+      setMarkTarget({ column: click.column, value: click.value, x: at.x, y: at.y }),
+    [],
+  );
 
   const { data, xKey, seriesKeys } = useMemo(() => {
     if (!result || result.columns.length === 0) {
@@ -243,13 +258,15 @@ export function ChartTile({ tile }: { tile: Tile }) {
     />
   ) : null;
   const legendEl = spec.legend ? (
-    <Legend
-      onClick={(entry: { dataKey?: unknown; value?: unknown }) =>
-        toggle(typeof entry.dataKey === "string" ? entry.dataKey : entry.value)
-      }
-      formatter={legendLabelFormatter}
-      wrapperStyle={{ fontSize: 11, cursor: "pointer" }}
-      iconSize={8}
+    <Legend content={legendToggleContent(legendToggle, seriesKeys)} />
+  ) : null;
+  const menuEl = markTarget ? (
+    <MarkMenu
+      tile={tile}
+      target={markTarget}
+      values={data.map((row) => row[markTarget.column])}
+      onClose={() => setMarkTarget(null)}
+      onCrossFilter={handleItemClick}
     />
   ) : null;
 
@@ -263,8 +280,10 @@ export function ChartTile({ tile }: { tile: Tile }) {
     onItemClick: handleItemClick,
     activeValue,
     hiddenKeys: hidden,
+    onItemContextMenu: openMarkMenu,
   };
 
+  const view = (() => {
   switch (spec.chartType) {
     case "scatter":
       return (
@@ -302,7 +321,7 @@ export function ChartTile({ tile }: { tile: Tile }) {
       );
     }
     case "donut":
-      return <DonutChartView {...baseProps} />;
+      return <DonutChartView {...baseProps} categoryToggle={legendToggle} />;
     case "hbar":
       return (
         <HBarChartView
@@ -350,7 +369,8 @@ export function ChartTile({ tile }: { tile: Tile }) {
             outerRadius="85%"
             paddingAngle={2}
             stroke="var(--card)"
-            className="cursor-pointer"
+            className="cursor-crosshair"
+            onContextMenu={sectorContextMenu(xKey, openMarkMenu) as never}
             onClick={(item: unknown) => {
               // recharts 3 spreads the datum into the sector item; payload
               // is not always present.
@@ -453,7 +473,8 @@ export function ChartTile({ tile }: { tile: Tile }) {
       <ComposedChart
         {...common}
         onClick={cartesianClick}
-        className="cursor-pointer"
+        onContextMenu={chartContextMenu(xKey, openMarkMenu)}
+        className="cursor-crosshair"
       >
         {axes}
         {annotationLines}
@@ -516,5 +537,13 @@ export function ChartTile({ tile }: { tile: Tile }) {
         {brush}
       </ComposedChart>
     </ResponsiveContainer>
+  );
+  })();
+
+  return (
+    <>
+      {view}
+      {menuEl}
+    </>
   );
 }

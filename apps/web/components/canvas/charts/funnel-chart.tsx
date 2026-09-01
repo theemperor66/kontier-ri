@@ -19,6 +19,7 @@ export function FunnelChartView({
   seriesKeys,
   valueFormat,
   onItemClick,
+  onItemContextMenu,
   activeValue,
 }: BaseChartProps) {
   const valueKey = seriesKeys[0];
@@ -50,10 +51,19 @@ export function FunnelChartView({
         <button
           key={`${s.label}-${i}`}
           type="button"
-          className={`group/stage flex min-h-0 flex-1 items-stretch gap-2 text-left ${onItemClick ? "cursor-pointer" : "cursor-default"}`}
+          className={`group/stage flex min-h-0 flex-1 items-stretch gap-2 text-left ${onItemClick ? "cursor-crosshair" : "cursor-default"}`}
           onClick={() =>
             s.raw != null && onItemClick?.({ column: xKey, value: s.raw })
           }
+          onContextMenu={(e) => {
+            if (s.raw == null || !onItemContextMenu) return;
+            e.preventDefault();
+            e.stopPropagation();
+            onItemContextMenu(
+              { column: xKey, value: s.raw },
+              { x: e.clientX, y: e.clientY },
+            );
+          }}
         >
           <span className="flex w-24 shrink-0 items-center justify-end truncate text-[11px] text-muted-foreground">
             {s.label}

@@ -33,6 +33,11 @@ import type {
   TileType,
 } from "@/lib/dashboard-store";
 import { autoLayout, useDashboardStore } from "@/lib/dashboard-store";
+import {
+  detectTimeGrain,
+  rewriteTimeGrain,
+  type TimeGrain,
+} from "@/lib/sql";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { KpiTile } from "@/components/tiles/kpi-tile";
@@ -207,6 +212,58 @@ function ChartTypeSwitcher({ tile }: { tile: Tile }) {
           )
         : null}
     </>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Temporal granularity (month / quarter / week)
+// ---------------------------------------------------------------------------
+
+const GRAIN_LABEL: Record<TimeGrain, string> = {
+  month: "Month",
+  quarter: "Quarter",
+  week: "Week",
+};
+
+/**
+ * Shown only when the chart's SQL bins on a recognizable strftime month
+ * pattern (or a week/quarter form this control previously wrote): the
+ * grain swap is then a lossless rewrite through updateTile (origin
+ * "human" — undoable, attributed, conflict-tracked).
+ */
+function GranularitySelect({ tile }: { tile: Tile }) {
+  const updateTile = useDashboardStore((s) => s.updateTile);
+  const spec = tile.spec as ChartSpec;
+  const sql = "sql" in spec.query ? spec.query.sql : null;
+  const grain = sql ? detectTimeGrain(sql) : null;
+  if (!sql || !grain) return null;
+  return (
+    <select
+      value={grain}
+      aria-label={`Time granularity of ${tile.title}`}
+      className="h-6 cursor-pointer rounded-md border border-transparent bg-transparent pr-0.5 text-[10px] font-medium text-muted-foreground outline-none transition-colors hover:border-border hover:text-foreground focus-visible:border-ring"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const next = e.target.value as TimeGrain;
+        if (next === grain) return;
+        updateTile(
+          tile.id,
+          { spec: { query: { sql: rewriteTimeGrain(sql, next) } } },
+          {
+            origin: "human",
+            label: `Set \u201c${tile.title}\u201d granularity to ${GRAIN_LABEL[next].toLowerCase()}`,
+          },
+        );
+      }}
+    >
+      {(Object.keys(GRAIN_LABEL) as TimeGrain[]).map((g) => (
+        <option key={g} value={g}>
+          {GRAIN_LABEL[g]}
+        </option>
+      ))}
+    </select>
   );
 }
 
@@ -386,7 +443,8 @@ export const TileFrame = memo(function TileFrame({
             AI
           </span>
         ) : null}
-        <div className="ml-auto flex items-center opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100 group-hover/tile:delay-150">
+        <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100 group-hover/tile:delay-150">
+          {tile.type === "chart" ? <GranularitySelect tile={tile} /> : null}
           {tile.type === "chart" ? <ChartTypeSwitcher tile={tile} /> : null}
           <Button
             variant="ghost"

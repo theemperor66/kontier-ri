@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { markOpacity, type BaseChartProps } from "./common";
+import { chartContextMenu, markOpacity, type BaseChartProps } from "./common";
 import { chartTooltip } from "./chart-tooltip";
 
 /** 100%-stacked bars: each x bucket normalized to fractions of its total. */
@@ -21,14 +21,18 @@ export function Stacked100ChartView({
   seriesKeys,
   colorFor,
   onItemClick,
+  onItemContextMenu,
   activeValue,
   hiddenKeys,
   children,
 }: BaseChartProps & { children?: React.ReactNode }) {
   const normalized = useMemo(() => {
+    // Legend-hidden series drop out of the 100% basis so the visible
+    // stack re-normalizes (matches BI expectations for toggle-off).
+    const visible = seriesKeys.filter((k) => !hiddenKeys?.has(k));
     return data.map((row) => {
       let total = 0;
-      for (const k of seriesKeys) {
+      for (const k of visible) {
         const v = row[k];
         if (typeof v === "number" && Number.isFinite(v) && v > 0) total += v;
       }
@@ -36,13 +40,17 @@ export function Stacked100ChartView({
       for (const k of seriesKeys) {
         const v = row[k];
         out[k] =
-          total > 0 && typeof v === "number" && Number.isFinite(v) && v > 0
+          total > 0 &&
+          visible.includes(k) &&
+          typeof v === "number" &&
+          Number.isFinite(v) &&
+          v > 0
             ? v / total
             : 0;
       }
       return out;
     });
-  }, [data, seriesKeys]);
+  }, [data, seriesKeys, hiddenKeys]);
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -55,7 +63,8 @@ export function Stacked100ChartView({
             onItemClick?.({ column: xKey, value: state.activeLabel });
           }
         }}
-        className={onItemClick ? "cursor-pointer" : undefined}
+        onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
+        className={onItemClick ? "cursor-crosshair" : undefined}
       >
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey={xKey} tickLine={false} axisLine={false} minTickGap={24} />

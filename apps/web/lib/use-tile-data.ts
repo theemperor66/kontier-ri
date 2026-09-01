@@ -17,7 +17,7 @@ import {
   type BuiltTileQuery,
 } from "@kontier-ri/studio";
 import { dataSource, useDataSource } from "@/lib/datasource";
-import { quoteIdent } from "@/lib/sql";
+import { quoteIdent, wrapOrderBy, type SortSpec } from "@/lib/sql";
 import type { KpiSpec, Tile } from "@/lib/dashboard-store";
 import { useDashboardStore } from "@/lib/dashboard-store";
 
@@ -25,9 +25,14 @@ export interface TileData {
   loading: boolean;
   error: string | null;
   result: QueryResult | null;
+  /**
+   * True when a requested `sort` was applied server-side (ORDER BY wrap).
+   * False when the wrap failed and the caller should client-sort instead.
+   */
+  serverSorted?: boolean;
 }
 
-export function useTileData(tile: Tile): TileData {
+export function useTileData(tile: Tile, sort?: SortSpec | null): TileData {
   const { datasets, dataVersion, status } = useDataSource();
   const filters = useDashboardStore((s) => s.doc.filters.filters);
   const dateRange = useDashboardStore((s) => s.doc.filters.dateRange);
@@ -61,32 +66,50 @@ export function useTileData(tile: Tile): TileData {
     let cancelled = false;
     setData((d) => ({ ...d, loading: true, error: null }));
     (async () => {
-      try {
-        let result: QueryResult;
+      // Candidate order: sorted primary, sorted fallback, then the
+      // unsorted originals (a failing ORDER BY wrap degrades to the
+      // caller's client-side page sort, never to an error).
+      const candidates: Array<{ sql: string; serverSorted: boolean }> = [];
+      const push = (sql: string | undefined, serverSorted: boolean) => {
+        if (sql && !candidates.some((c) => c.sql === sql)) {
+          candidates.push({ sql, serverSorted });
+        }
+      };
+      if (sort) {
+        push(wrapOrderBy(built.sql, sort), true);
+        if (built.fallbackSQL) push(wrapOrderBy(built.fallbackSQL, sort), true);
+      }
+      push(built.sql, false);
+      push(built.fallbackSQL, false);
+      let lastErr: unknown = null;
+      for (const c of candidates) {
         try {
-          result = await dataSource.runQuery(built.sql);
-        } catch (err) {
-          if (built.fallbackSQL && built.fallbackSQL !== built.sql) {
-            result = await dataSource.runQuery(built.fallbackSQL);
-          } else {
-            throw err;
+          const result = await dataSource.runQuery(c.sql);
+          if (!cancelled) {
+            setData({
+              loading: false,
+              error: null,
+              result,
+              serverSorted: sort ? c.serverSorted : undefined,
+            });
           }
+          return;
+        } catch (err) {
+          lastErr = err;
         }
-        if (!cancelled) setData({ loading: false, error: null, result });
-      } catch (err) {
-        if (!cancelled) {
-          setData({
-            loading: false,
-            error: err instanceof Error ? err.message : String(err),
-            result: null,
-          });
-        }
+      }
+      if (!cancelled) {
+        setData({
+          loading: false,
+          error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+          result: null,
+        });
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [built, status, dataVersion]);
+  }, [built, status, dataVersion, sort]);
 
   return data;
 }

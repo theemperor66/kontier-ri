@@ -15,6 +15,7 @@ import type { FormatOptions, ValueFormat } from "@/lib/format";
 import {
   axisTickFormatter,
   axisWidth,
+  chartContextMenu,
   markOpacity,
   type BaseChartProps,
 } from "./common";
@@ -43,6 +44,7 @@ export function ComboChartView({
   valueFormat,
   y2Format,
   onItemClick,
+  onItemContextMenu,
   activeValue,
   hiddenKeys,
   series,
@@ -68,7 +70,8 @@ export function ComboChartView({
             onItemClick?.({ column: xKey, value: state.activeLabel });
           }
         }}
-        className={onItemClick ? "cursor-pointer" : undefined}
+        onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
+        className={onItemClick ? "cursor-crosshair" : undefined}
       >
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey={xKey} tickLine={false} axisLine={false} minTickGap={24} />
