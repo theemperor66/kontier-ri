@@ -41,7 +41,7 @@ import { TileProposalStrip } from "@/components/presence/tile-proposal";
 import { ChartTile } from "@/components/tiles/chart-tile";
 import { TableTile } from "@/components/tiles/table-tile";
 import { MarkdownTile } from "@/components/tiles/markdown-tile";
-import { tileSpecTitle, tileSubline } from "@/components/tiles/tile-subline";
+import { tileSubline } from "@/components/tiles/tile-subline";
 
 /** Body padding per tile type (design: tables bleed to the card edges). */
 const BODY_PADDING: Record<TileType, string> = {
@@ -428,7 +428,6 @@ export const TileFrame = memo(function TileFrame({
               }
             : undefined
         }
-        title={tileSpecTitle(tile)}
       >
         {/* Design header: 14px/500 title over a 12px faint sub-line built
             from the real spec (measure, dataset, comparison, filters). */}
@@ -491,7 +490,10 @@ export const TileFrame = memo(function TileFrame({
             )}
           </div>
           {subline ? (
-            <span className="truncate text-[12px] leading-tight text-faint">
+            <span
+              className="truncate text-[12px] leading-tight text-faint"
+              title={subline}
+            >
               {subline}
             </span>
           ) : null}

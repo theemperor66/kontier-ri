@@ -8,7 +8,11 @@ import {
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
 } from "recharts";
-import { formatValue, humanizeIdent, prettifySeriesLabel } from "@/lib/format";
+import {
+  dimensionNoun,
+  formatValue,
+  prettifySeriesLabel,
+} from "@/lib/format";
 import {
   markOpacity,
   sectorContextMenu,
@@ -23,6 +27,25 @@ function pluralize(word: string, n: number): string {
   if (/s$/i.test(word)) return word;
   if (/y$/i.test(word)) return `${word.slice(0, -1)}ies`;
   return `${word}s`;
+}
+
+/**
+ * When every category starts with the same `token_`, that token is the column
+ * talking about itself. Strip it for display only, and only when what remains
+ * still identifies each row.
+ */
+function sharedPrefixStripper(categories: string[]): (value: string) => string {
+  if (categories.length < 2) return prettifySeriesLabel;
+  const parts = categories.map((c) => c.split("_"));
+  if (parts.some((tokens) => tokens.length < 2)) return prettifySeriesLabel;
+  const head = parts[0]![0]!;
+  if (!parts.every((tokens) => tokens[0] === head)) return prettifySeriesLabel;
+  const stripped = new Set(parts.map((tokens) => tokens.slice(1).join("_")));
+  if (stripped.size !== categories.length || [...stripped].some((s) => !s)) {
+    return prettifySeriesLabel;
+  }
+  return (value: string) =>
+    prettifySeriesLabel(value.split("_").slice(1).join("_") || value);
 }
 
 interface DonutViewProps extends BaseChartProps {
@@ -89,10 +112,12 @@ export function DonutChartView({
   const colorForCategory = (cat: string) =>
     colorFor(Math.max(0, categories.indexOf(cat)));
   const showLegend = categories.length > 1 && categories.length <= 12;
-  const noun = pluralize(
-    humanizeIdent(xKey).toLowerCase(),
-    visible.length,
-  );
+  // Categories from one column usually share a prefix (plan_enterprise,
+  // plan_growth). Dropping the shared token gives the legend its width back
+  // without hiding anything: the full value stays in the hover title.
+  const legendLabel = sharedPrefixStripper(categories);
+  // "plan_id" identifies a plan, so the hole counts plans — not "plan ids".
+  const noun = pluralize(dimensionNoun(xKey), visible.length);
 
   return (
     <div className="flex h-full w-full items-center gap-4">
@@ -190,7 +215,7 @@ export function DonutChartView({
                   style={{ backgroundColor: colorForCategory(cat) }}
                 />
                 <span className="min-w-0 flex-1 truncate">
-                  {prettifySeriesLabel(cat)}
+                  {legendLabel(cat)}
                 </span>
                 {share != null && !off ? (
                   <span className="shrink-0 tabular-nums text-muted-foreground">

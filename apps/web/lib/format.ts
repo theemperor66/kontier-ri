@@ -151,6 +151,16 @@ export function humanizeIdent(name: string): string {
   return currencyTail ? `${base} (${last.toUpperCase()})` : base;
 }
 
+/**
+ * The human noun behind a dimension column: `plan_id` -> "plan",
+ * `customer_id` -> "customer", `month` -> "month". A key column names the
+ * thing it identifies, so a count of them is a count of those things.
+ */
+export function dimensionNoun(name: string): string {
+  const stripped = name.replace(/(_|\s)?(id|key|code|uuid)$/i, "");
+  return humanizeIdent(stripped || name).toLowerCase();
+}
+
 const AGG_ALIAS_RE =
   /^(sum|avg|min|max|median|count_distinct|count)_(.+)$/;
 

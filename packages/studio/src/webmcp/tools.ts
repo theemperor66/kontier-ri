@@ -74,6 +74,7 @@ import type {
   ReviseChangeSetInput,
   Tile,
   TilePatch,
+  WorkSessionPhase,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -1615,6 +1616,109 @@ export const STATIC_TOOL_NAMES = [
   "complete_work",
   "propose_change_set",
 ] as const;
+
+/**
+ * Phase-keyed toolbelt (opt-in).
+ *
+ * The full static surface is always correct, but a human can ask for a
+ * narrower one: when the "focused toolbelt" is on, only the tools that make
+ * sense for the session's current phase stay registered, and the rest
+ * unregister until the work moves on. Reads are never scoped away — an agent
+ * must always be able to orient itself and look at the data.
+ */
+const ALWAYS_AVAILABLE = [
+  // Orientation + read-only: valid in every phase.
+  "get_work_context",
+  "get_dashboard_state",
+  "get_user_focus",
+  "describe_tile",
+  "get_activity_log",
+  "list_datasets",
+  "get_dataset_schema",
+  "profile_column",
+  "sample_rows",
+  "run_sql",
+  "list_calculated_fields",
+  "export_tile_data",
+] as const;
+
+const PLAN_TOOLS = ["present_plan", "update_plan_step", "clear_plan"] as const;
+
+const BUILD_TOOLS = [
+  "add_tile",
+  "update_tile",
+  "move_tile",
+  "remove_tile",
+  "add_annotation",
+  "set_global_filter",
+  "clear_global_filters",
+  "set_date_range",
+  "set_dashboard_title",
+  "set_tile_filters",
+  "set_cross_filter",
+  "clear_cross_filter",
+  "add_page",
+  "rename_page",
+  "remove_page",
+  "switch_page",
+  "create_calculated_field",
+  "remove_calculated_field",
+  "create_view",
+  "remove_view",
+] as const;
+
+/**
+ * Deliberately in no phase scope: the theme is a human preference, not
+ * investigation work. It stays available whenever the focused toolbelt is off.
+ */
+const UNSCOPED_TOOLS = ["set_theme"] as const;
+
+const REVIEW_TOOLS = [
+  "propose_insight",
+  "propose_change_set",
+  "request_decision",
+] as const;
+
+/**
+ * Which static tools stay registered per phase while the focused toolbelt is
+ * on. A phase never removes a tool the agent needs to finish what that phase
+ * is for: `working` keeps the review tools so it can hand work over, and
+ * `review` keeps the plan tools so it can report progress.
+ */
+export const PHASE_TOOL_SCOPES: Record<WorkSessionPhase, readonly string[]> = {
+  ready: [...ALWAYS_AVAILABLE, "present_plan", "request_decision"],
+  planning: [...ALWAYS_AVAILABLE, ...PLAN_TOOLS, "request_decision"],
+  working: [
+    ...ALWAYS_AVAILABLE,
+    ...PLAN_TOOLS,
+    ...BUILD_TOOLS,
+    ...REVIEW_TOOLS,
+    "complete_work",
+  ],
+  review: [
+    ...ALWAYS_AVAILABLE,
+    ...PLAN_TOOLS,
+    ...REVIEW_TOOLS,
+    "complete_work",
+  ],
+  complete: [...ALWAYS_AVAILABLE],
+  paused: [...ALWAYS_AVAILABLE],
+};
+
+/**
+ * Filter a built static tool list down to one phase. An unknown phase (or no
+ * session) returns the list unchanged: the default toolbelt is the full one.
+ */
+export function scopeToolsToPhase(
+  defs: ToolDefinition[],
+  phase: WorkSessionPhase | null | undefined,
+): ToolDefinition[] {
+  if (!phase) return defs;
+  const allowed = PHASE_TOOL_SCOPES[phase];
+  if (!allowed) return defs;
+  const allowedSet = new Set(allowed);
+  return defs.filter((def) => allowedSet.has(def.name));
+}
 
 export const DYNAMIC_TOOL_NAMES = [
   "edit_selected_tile",

@@ -9,6 +9,7 @@
 import { ArrowRight, ClipboardText, CursorClick, Scan } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useDashboardStore } from "@/lib/dashboard-store";
+import { cn } from "@/lib/utils";
 
 export function FocusRibbon({ onOpenWorkspace }: { onOpenWorkspace: () => void }) {
   const brushed = useDashboardStore((s) => s.brushedRange);
@@ -18,7 +19,9 @@ export function FocusRibbon({ onOpenWorkspace }: { onOpenWorkspace: () => void }
   );
   const session = useDashboardStore((s) => s.presence.session);
 
-  if (!brushed && !crossFilter && !selectedTitle) return null;
+  // The selection bar already names the selected tile, so the ribbon speaks
+  // only for what it cannot show: a brushed range or a cross-filter.
+  if (!brushed && !crossFilter) return null;
 
   const detail = brushed
     ? `${brushed.from} → ${brushed.to}${selectedTitle ? ` on ${selectedTitle}` : ""}`
@@ -32,7 +35,11 @@ export function FocusRibbon({ onOpenWorkspace }: { onOpenWorkspace: () => void }
   return (
     <div
       data-testid="focus-ribbon"
-      className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex justify-center px-4"
+      className={cn(
+        "pointer-events-none absolute inset-x-0 z-30 flex justify-center px-4",
+        // Sit above the selection bar rather than under it.
+        selectedTitle ? "bottom-16" : "bottom-3",
+      )}
     >
       <div className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full border border-line bg-card/95 py-1.5 pl-3 pr-1.5 shadow-card backdrop-blur">
         <span className="grid size-6 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground">

@@ -120,14 +120,19 @@ test("inspector opens via double-click, ⌘E and the ⚙ pill; Escape closes it"
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
 
-  // The ⚙ pill sits next to the selection toolbar and opens the panel.
-  const pill = page.getByTestId("open-inspector");
+  // The ⚙ control lives INSIDE the one selection bar (three separate
+  // floating controls used to stack on top of each other) and opens the
+  // panel.
+  const toolbar = page.getByTestId("selection-toolbar");
+  const pill = toolbar.getByTestId("open-inspector");
   await expect(pill).toBeVisible();
-  const toolbar = await page.getByTestId("selection-toolbar").boundingBox();
+  const bar = await toolbar.boundingBox();
   const pillBox = await pill.boundingBox();
-  expect(pillBox!.x).toBeGreaterThan(toolbar!.x + toolbar!.width - 1);
+  expect(pillBox!.x).toBeGreaterThan(bar!.x);
+  expect(pillBox!.x + pillBox!.width).toBeLessThanOrEqual(bar!.x + bar!.width + 1);
   await pill.click();
   await expect(panel).toBeVisible();
+  await expect(pill).toHaveAttribute("aria-pressed", "true");
 
   // Panel follows the selection to another tile.
   await page

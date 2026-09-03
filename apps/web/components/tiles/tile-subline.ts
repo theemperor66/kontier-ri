@@ -17,7 +17,7 @@ import type {
   TableSpec,
   Tile,
 } from "@/lib/dashboard-store";
-import { humanizeIdent, prettifySeriesLabel } from "@/lib/format";
+import { dimensionNoun, prettifySeriesLabel } from "@/lib/format";
 
 const DOT = " \u00b7 ";
 
@@ -52,7 +52,7 @@ function chartSub(spec: ChartSpec): string {
     "sql" in spec.query
       ? (spec.seriesKeys ?? []).map(prettifySeriesLabel)
       : spec.query.measures.map((m) => measureLabel(m.agg, m.col));
-  const by = spec.xKey ? humanizeIdent(spec.xKey).toLowerCase() : null;
+  const by = spec.xKey ? dimensionNoun(spec.xKey) : null;
   const head =
     measures.length > 0
       ? `${measures.slice(0, 2).join(", ")}${measures.length > 2 ? "\u2026" : ""}${
@@ -89,7 +89,12 @@ export function tileSubline(tile: Tile): string {
   }
 }
 
-/** Exact spec summary for the header tooltip (same string the agent sees). */
+/**
+ * Exact spec summary — the same string the agent reads through
+ * `describe_tile`. Kept for the inspector and for tests; deliberately NOT a
+ * hover on the tile header, where a raw spec string covered the tile it
+ * described.
+ */
 export function tileSpecTitle(tile: Tile): string {
   try {
     return summarizeSpec(tile);

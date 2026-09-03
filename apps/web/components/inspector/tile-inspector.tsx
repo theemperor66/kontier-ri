@@ -75,67 +75,6 @@ function InspectorOpeners() {
 // the existing selection toolbar (chrome-owned; deliberately not edited).
 // ---------------------------------------------------------------------------
 
-function InspectorTrigger() {
-  const presentation = useUiState((s) => s.presentation);
-  const selectedTileId = useDashboardStore((s) => s.selectedTileId);
-  const open = useInspectorState((s) => s.open);
-  const toggle = useInspectorState((s) => s.toggle);
-  const [left, setLeft] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!selectedTileId || presentation) {
-      setLeft(null);
-      return;
-    }
-    let frames = 0;
-    let raf = 0;
-    let ro: ResizeObserver | null = null;
-    const measure = () => {
-      const el = document.querySelector<HTMLElement>(
-        '[data-testid="selection-toolbar"]',
-      );
-      if (el) {
-        setLeft(el.getBoundingClientRect().right + 8);
-        if (!ro && typeof ResizeObserver !== "undefined") {
-          ro = new ResizeObserver(() => measure());
-          ro.observe(el);
-        }
-      } else if (frames++ < 10) {
-        raf = requestAnimationFrame(measure);
-      } else {
-        setLeft(null);
-      }
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => {
-      cancelAnimationFrame(raf);
-      ro?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [selectedTileId, presentation]);
-
-  if (!selectedTileId || presentation || left == null) return null;
-  return (
-    <div className="fixed bottom-4 z-40" style={{ left }}>
-      <button
-        type="button"
-        data-testid="open-inspector"
-        aria-label="Inspect tile"
-        aria-pressed={open}
-        onClick={toggle}
-        className="flex items-center gap-1.5 rounded-full border border-border bg-popover/95 py-2 pl-3 pr-2.5 text-xs font-medium text-muted-foreground shadow-lg backdrop-blur transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
-      >
-        <GearSix className="size-3.5" />
-        Inspect
-        <kbd className="rounded border border-border bg-muted px-1 font-sans text-[10px] text-muted-foreground">
-          ⌘E
-        </kbd>
-      </button>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Panel
 // ---------------------------------------------------------------------------
@@ -328,12 +267,15 @@ function InspectorPanel() {
   );
 }
 
-/** Single mount point for the app shell: openers + trigger + panel. */
+/**
+ * Single mount point for the app shell: keyboard openers + the panel. The
+ * visible trigger lives in the selection bar, so the canvas carries one
+ * floating control instead of three.
+ */
 export function TileInspectorMount() {
   return (
     <>
       <InspectorOpeners />
-      <InspectorTrigger />
       <InspectorPanel />
     </>
   );

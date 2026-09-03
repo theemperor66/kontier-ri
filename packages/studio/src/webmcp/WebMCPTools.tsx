@@ -6,7 +6,13 @@ import {
   useWebMCPTool,
   type ToolRegistrationStatus,
 } from "./useWebMCPTool";
-import { buildStaticTools, type StudioStoreApi, type ToolDefinition } from "./tools";
+import {
+  buildStaticTools,
+  scopeToolsToPhase,
+  type StudioStoreApi,
+  type ToolDefinition,
+} from "./tools";
+import type { WorkSessionPhase } from "../types";
 
 /** One hook call per tool; keyed mount keeps the rules of hooks happy. */
 export function RegisteredTool({
@@ -54,16 +60,25 @@ export interface WebMCPToolsProps {
 /**
  * Mounts every static WebMCP tool (docs/TOOLS.md). Render once from the
  * top-level page (ChatGPT constraint: register only from the top frame).
+ *
+ * `phase` is the opt-in focused toolbelt: pass the live work-session phase and
+ * only the tools that phase needs stay registered; pass nothing (the default)
+ * and the full static surface registers.
  */
 export function WebMCPTools({
   dataSource,
   store,
   onError,
   onStatusChange,
-}: WebMCPToolsProps) {
+  phase,
+}: WebMCPToolsProps & { phase?: WorkSessionPhase | null }) {
   const defs = useMemo(
-    () => buildStaticTools({ dataSource, ...(store ? { store } : {}) }),
-    [dataSource, store],
+    () =>
+      scopeToolsToPhase(
+        buildStaticTools({ dataSource, ...(store ? { store } : {}) }),
+        phase,
+      ),
+    [dataSource, store, phase],
   );
   return (
     <>

@@ -1,18 +1,21 @@
 "use client";
 
 /**
- * Selection toolbar: floating pill with per-tile export actions (CSV data /
- * PNG image) for the currently selected tile. Chrome-owned so the canvas
- * tile frames stay lean; hidden in presentation mode.
+ * Selection bar: one floating pill for the selected tile — its name, the
+ * per-tile exports, and the inspector toggle. It is deliberately a single
+ * bar: three separate floating controls used to stack on top of each other
+ * at the bottom of the canvas.
  */
 
-import { DownloadSimple, FileImage } from "@phosphor-icons/react";
+import { DownloadSimple, FileImage, GearSix } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useDashboardStore } from "@/lib/dashboard-store";
 import { useUiState } from "@/lib/ui-state";
+import { useInspectorState } from "@/components/inspector/state";
 import { Button } from "@/components/ui/button";
 import { exportTileCSV } from "@/lib/export-csv";
 import { exportTilePNG } from "@/lib/export-image";
+import { cn } from "@/lib/utils";
 
 export function SelectionToolbar() {
   const presentation = useUiState((s) => s.presentation);
@@ -21,6 +24,8 @@ export function SelectionToolbar() {
       ? s.doc.tiles.find((t) => t.id === s.selectedTileId)
       : undefined,
   );
+  const inspectorOpen = useInspectorState((s) => s.open);
+  const toggleInspector = useInspectorState((s) => s.toggle);
   if (!tile || presentation) return null;
 
   const guard = (p: Promise<void>, okMsg: string) =>
@@ -33,12 +38,12 @@ export function SelectionToolbar() {
   return (
     <div
       data-testid="selection-toolbar"
-      className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-popover/95 py-1 pl-3 pr-1.5 shadow-lg backdrop-blur"
+      className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-line bg-card/95 py-1 pl-3 pr-1.5 shadow-card backdrop-blur"
     >
       <span className="max-w-48 truncate text-xs font-medium text-muted-foreground">
         {tile.title}
       </span>
-      <div className="mx-1 h-4 w-px bg-border" />
+      <div className="mx-1 h-4 w-px bg-line" />
       {tile.type !== "markdown" ? (
         <Button
           variant="ghost"
@@ -69,6 +74,26 @@ export function SelectionToolbar() {
       >
         <FileImage className="size-3.5" /> PNG
       </Button>
+      <div className="mx-1 h-4 w-px bg-line" />
+      <button
+        type="button"
+        data-testid="open-inspector"
+        aria-label="Inspect tile"
+        aria-pressed={inspectorOpen}
+        onClick={toggleInspector}
+        className={cn(
+          "flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-xs font-medium transition-colors",
+          inspectorOpen
+            ? "bg-accent text-accent-foreground"
+            : "text-muted-foreground hover:bg-surface-2 hover:text-foreground",
+        )}
+      >
+        <GearSix className="size-3.5" />
+        Inspect
+        <kbd className="rounded border border-line bg-surface-2 px-1 font-sans text-[10px] text-muted-foreground">
+          ⌘E
+        </kbd>
+      </button>
     </div>
   );
 }
