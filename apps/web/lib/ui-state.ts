@@ -36,6 +36,12 @@ interface UiState {
   /** Version history dialog. */
   versionsOpen: boolean;
   setVersionsOpen(open: boolean): void;
+  /**
+   * Agent diagnostics dialog. The ChatGPT in-app browser has no devtools, so
+   * the page has to be able to report its own WebMCP registration state.
+   */
+  diagnosticsOpen: boolean;
+  setDiagnosticsOpen(open: boolean): void;
   /** Persistent human-agent work rail; mobile renders it as a sheet. */
   agentPanelOpen: boolean;
   /** Which tab the agent panel shows (suggestions or the command log). */
@@ -67,6 +73,8 @@ export const useUiState = create<UiState>()((set) => ({
   toggleDataRail: () => set((s) => ({ dataRailOpen: !s.dataRailOpen })),
   versionsOpen: false,
   setVersionsOpen: (open) => set({ versionsOpen: open }),
+  diagnosticsOpen: false,
+  setDiagnosticsOpen: (open) => set({ diagnosticsOpen: open }),
   agentPanelOpen: false,
   agentPanelTab: "suggestions",
   setAgentPanelTab: (tab) => set({ agentPanelTab: tab }),

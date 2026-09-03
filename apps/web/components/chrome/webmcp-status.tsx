@@ -3,12 +3,14 @@
 import { Circle, Plugs, PlugsConnected, Warning } from "@phosphor-icons/react";
 import { DYNAMIC_TOOL_NAMES, STATIC_TOOL_NAMES } from "@kontier-ri/studio";
 import { useDashboardStore } from "@/lib/dashboard-store";
+import { useUiState } from "@/lib/ui-state";
 import { useWebMCPRegistry } from "@/lib/webmcp-registry";
 import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 export function WebMCPStatus() {
   const hasSelection = useDashboardStore((s) => s.selectedTileId != null);
+  const openDiagnostics = useUiState((s) => s.setDiagnosticsOpen);
   const {
     runtimeAvailable,
     tools,
@@ -77,12 +79,15 @@ export function WebMCPStatus() {
         )
       }
     >
-      <span
+      <button
+        type="button"
         data-testid="webmcp-status"
         data-ready-count={readyCount}
         data-expected-count={expectedCount}
+        aria-label={`${label}. Open agent diagnostics.`}
+        onClick={() => openDiagnostics(true)}
         className={cn(
-          "inline-flex h-8 cursor-default items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium",
+          "inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-opacity hover:opacity-90",
           failed
             ? "border-destructive/30 bg-destructive/10 text-destructive"
             : ready
@@ -116,7 +121,7 @@ export function WebMCPStatus() {
         <span className="sr-only">
           {Object.keys(tools).length} tool states observed.
         </span>
-      </span>
+      </button>
     </Tooltip>
   );
 }

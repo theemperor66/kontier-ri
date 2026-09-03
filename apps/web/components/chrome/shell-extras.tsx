@@ -17,6 +17,7 @@ import { DashboardManager } from "@/components/chrome/dashboard-manager";
 import { TemplatesGallery } from "@/components/chrome/templates-gallery";
 import { AddVisualDialog } from "@/components/chrome/add-visual";
 import { VersionHistory } from "@/components/chrome/version-history";
+import { AgentDiagnostics } from "@/components/chrome/agent-diagnostics";
 import { DashboardPersistence } from "@/components/chrome/dashboard-persistence";
 import { SelectionToolbar } from "@/components/chrome/selection-toolbar";
 import { AgentAnnouncer } from "@/components/presence/agent-announcer";
@@ -111,6 +112,7 @@ export function ShellExtras() {
       <TemplatesGallery />
       <AddVisualDialog />
       <VersionHistory />
+      <AgentDiagnostics />
       <AgentAnnouncer />
       <InvestigationRecorder />
     </>
