@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --dir test --config test/server/vitest.config.ts",
+    "test": "vitest run --config test/server/vitest.config.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

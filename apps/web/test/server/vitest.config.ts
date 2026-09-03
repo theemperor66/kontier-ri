@@ -25,7 +25,10 @@ export default defineConfig({
     include: ["test/**/*.test.ts"],
     // Route handlers and the store read process.env, and the store keeps an
     // in-process lock table: one process, no parallel file interleaving.
+    // Vitest 4 removed test.poolOptions; the equivalents are top-level.
     pool: "threads",
-    poolOptions: { threads: { singleThread: true } },
+    maxWorkers: 1,
+    minWorkers: 1,
+    fileParallelism: false,
   },
 });
