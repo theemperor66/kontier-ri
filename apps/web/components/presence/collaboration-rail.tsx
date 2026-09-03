@@ -25,6 +25,7 @@ import { ChangeSetQueue } from "@/components/presence/change-set-card";
 import { useUiState } from "@/lib/ui-state";
 import { useWebMCPRegistry } from "@/lib/webmcp-registry";
 import { ToolCallLog } from "@/components/presence/tool-call-log";
+import { WorkspacePeers } from "@/components/presence/workspace-peers";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatAgo } from "@/lib/format";
@@ -714,6 +715,7 @@ export function CollaborationRail({
             <>
               <BriefBlock />
               <DecisionBlock />
+              <WorkspacePeers />
               <ChangeSetQueue />
               <ProposalBlock />
               <PlanBlock />

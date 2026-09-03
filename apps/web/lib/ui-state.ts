@@ -42,6 +42,13 @@ interface UiState {
    */
   diagnosticsOpen: boolean;
   setDiagnosticsOpen(open: boolean): void;
+  /**
+   * Sign-in / invite screen. Deliberately NOT a wall: the product renders
+   * first and this opens on request. A visitor who has to choose a workspace
+   * before seeing anything mostly chooses to leave.
+   */
+  signInOpen: boolean;
+  setSignInOpen(open: boolean): void;
   /** Persistent human-agent work rail; mobile renders it as a sheet. */
   agentPanelOpen: boolean;
   /** Which tab the agent panel shows (suggestions or the command log). */
@@ -75,6 +82,8 @@ export const useUiState = create<UiState>()((set) => ({
   setVersionsOpen: (open) => set({ versionsOpen: open }),
   diagnosticsOpen: false,
   setDiagnosticsOpen: (open) => set({ diagnosticsOpen: open }),
+  signInOpen: false,
+  setSignInOpen: (open) => set({ signInOpen: open }),
   agentPanelOpen: false,
   agentPanelTab: "suggestions",
   setAgentPanelTab: (tab) => set({ agentPanelTab: tab }),

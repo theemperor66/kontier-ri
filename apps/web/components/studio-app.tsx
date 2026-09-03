@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { useTheme } from "next-themes";
 import { Toaster } from "sonner";
+import { WorkspaceProvider } from "@/lib/workspace-sync";
+import { WorkspaceGate } from "@/components/chrome/workspace-gate";
 import {
   DecisionScopedTools,
   ProposalScopedTools,
@@ -283,7 +285,13 @@ function StudioAppInner() {
 export function StudioApp() {
   return (
     <WebMCPRegistryProvider>
-      <StudioAppInner />
+      {/* The workspace loop wraps the app: which workspace this tab is in
+          decides what every approval and every edit means. */}
+      <WorkspaceProvider>
+        <WorkspaceGate>
+          <StudioAppInner />
+        </WorkspaceGate>
+      </WorkspaceProvider>
     </WebMCPRegistryProvider>
   );
 }

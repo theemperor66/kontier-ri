@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Menu, MenuItem, MenuSeparator } from "./menu";
 import { WebMCPStatus } from "./webmcp-status";
+import { ShareWorkspaceButton } from "./share-workspace";
 import { useUiState, type WorkspaceView } from "@/lib/ui-state";
 import { buildShareURL } from "@/lib/share-url";
 import { exportDashboardJSON } from "@/lib/dashboards";
@@ -169,6 +170,9 @@ export function TopBar({
           <MagnifyingGlass className="size-4" />
         </button>
       </Tooltip>
+
+      {/* Joining or inviting is one visible click, never a wall. */}
+      <ShareWorkspaceButton />
 
       <div className="hidden md:block">
         <WebMCPStatus />
