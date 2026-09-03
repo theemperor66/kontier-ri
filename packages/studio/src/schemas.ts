@@ -510,3 +510,246 @@ export const proposeInsightInput = z
     suggestedAction: suggestedActionSchema.optional(),
   })
   .strict();
+
+// --- tool inputs: Group 7 (collaboration session / structured decisions) ----
+
+export const getWorkContextInput = emptyInput;
+
+export const decisionOptionSchema = z
+  .object({
+    id: z.string().trim().min(1).max(64),
+    label: z.string().trim().min(1).max(120),
+    description: z.string().trim().min(1).max(400).optional(),
+  })
+  .strict();
+
+/**
+ * Ask only when a material ambiguity needs a human choice. Option ids are
+ * unique and the recommendation, when present, must name one of them.
+ */
+export const requestDecisionInput = z
+  .object({
+    question: z.string().trim().min(1).max(300),
+    context: z.string().trim().min(1).max(1200),
+    options: z.array(decisionOptionSchema).min(2).max(5),
+    recommendedOptionId: z.string().trim().min(1).max(64).optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    const seen = new Set<string>();
+    for (const [index, option] of input.options.entries()) {
+      if (seen.has(option.id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["options", index, "id"],
+          message: `Duplicate option id "${option.id}".`,
+        });
+      }
+      seen.add(option.id);
+    }
+    if (
+      input.recommendedOptionId !== undefined &&
+      !seen.has(input.recommendedOptionId)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["recommendedOptionId"],
+        message: "recommendedOptionId must name one of the options.",
+      });
+    }
+  });
+
+export const completeWorkInput = z
+  .object({
+    summary: z.string().trim().min(1).max(1200),
+    outcomes: z.array(z.string().trim().min(1).max(300)).max(20),
+  })
+  .strict();
+
+/** Inferred tool input types, exported for non-store WebMCP consumers. */
+export type RequestDecisionToolInput = z.infer<typeof requestDecisionInput>;
+export type CompleteWorkToolInput = z.infer<typeof completeWorkInput>;
+
+// --- tool inputs: Group 8 (staged change sets — reviewable multi-edit) ------
+
+/** Short per-action reason, shown next to that row in the review card. */
+export const changeActionNoteSchema = z.string().trim().min(1).max(200);
+
+/** update_tile patch that actually changes something. */
+export const nonEmptyTilePatchSchema = tilePatchSchema.refine(
+  (patch) =>
+    patch.title !== undefined ||
+    (patch.spec !== undefined && Object.keys(patch.spec).length > 0),
+  { message: "Patch is empty: provide title and/or spec keys." },
+);
+
+export const globalFilterPayloadSchema = z
+  .object({
+    column: z.string().min(1),
+    op: filterOpSchema,
+    value: filterValueSchema,
+  })
+  .strict();
+
+/**
+ * One staged edit. Executed through the EXISTING command layer (origin
+ * "agent", undoable) only when the human applies the set — never on propose.
+ */
+export const changeActionSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("add_tile"),
+      /** Same shape as the add_tile tool input. */
+      payload: addTileInput,
+      note: changeActionNoteSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("update_tile"),
+      payload: z
+        .object({
+          tileId: z.string().min(1),
+          patch: nonEmptyTilePatchSchema,
+        })
+        .strict(),
+      note: changeActionNoteSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("remove_tile"),
+      payload: z.object({ tileId: z.string().min(1) }).strict(),
+      note: changeActionNoteSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("add_annotation"),
+      payload: addAnnotationInput,
+      note: changeActionNoteSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("set_filter"),
+      payload: globalFilterPayloadSchema,
+      note: changeActionNoteSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("set_tile_filters"),
+      payload: z
+        .object({
+          tileId: z.string().min(1),
+          /** Empty array clears the tile's filters. */
+          filters: z.array(tileFilterSchema).max(10),
+        })
+        .strict(),
+      note: changeActionNoteSchema.optional(),
+    })
+    .strict(),
+]);
+
+/** Tile the action targets, when it targets one (propose-time checks). */
+function actionTileId(action: z.output<typeof changeActionSchema>): string | null {
+  return action.kind === "add_tile" || action.kind === "set_filter"
+    ? null
+    : action.payload.tileId;
+}
+
+/** Shared refinement: no duplicate rows, no edits after a removal. */
+function checkActionList(
+  actions: z.output<typeof changeActionSchema>[],
+  ctx: z.RefinementCtx,
+  path: (string | number)[] = ["actions"],
+): void {
+  const seen = new Map<string, number>();
+  actions.forEach((action, index) => {
+    const key = JSON.stringify([action.kind, action.payload]);
+    const first = seen.get(key);
+    if (first !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: [...path, index],
+        message: `Duplicate action: index ${index} repeats index ${first}.`,
+      });
+    } else {
+      seen.set(key, index);
+    }
+  });
+  const removed = new Map<string, number>();
+  actions.forEach((action, index) => {
+    if (action.kind === "remove_tile") removed.set(action.payload.tileId, index);
+  });
+  actions.forEach((action, index) => {
+    const tileId = actionTileId(action);
+    if (!tileId || action.kind === "remove_tile") return;
+    const removedAt = removed.get(tileId);
+    if (removedAt !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: [...path, index],
+        message: `Action ${index} edits tile "${tileId}", which action ${removedAt} removes.`,
+      });
+    }
+  });
+}
+
+export const changeActionsSchema = z
+  .array(changeActionSchema)
+  .min(1, "A change set needs at least one action.")
+  .max(8, "A change set holds at most 8 actions; split larger work.");
+
+export const proposeChangeSetInput = z
+  .object({
+    title: z.string().trim().min(1).max(120),
+    rationale: z.string().trim().min(1).max(600),
+    actions: changeActionsSchema,
+  })
+  .strict()
+  .superRefine((input, ctx) => checkActionList(input.actions, ctx));
+
+export const applyChangeSetInput = z
+  .object({
+    changeSetId: z.string().min(1),
+    /** 0-based indexes the human dropped during review. */
+    skipIndexes: z.array(z.number().int().min(0).max(7)).max(8).optional(),
+  })
+  .strict();
+
+export const reviseChangeSetInput = z
+  .object({
+    changeSetId: z.string().min(1),
+    title: z.string().trim().min(1).max(120).optional(),
+    rationale: z.string().trim().min(1).max(600).optional(),
+    actions: changeActionsSchema.optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (
+      input.title === undefined &&
+      input.rationale === undefined &&
+      input.actions === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Provide title, rationale and/or actions to revise.",
+      });
+    }
+    if (input.actions) checkActionList(input.actions, ctx);
+  });
+
+export const withdrawChangeSetInput = z
+  .object({ changeSetId: z.string().min(1) })
+  .strict();
+
+export const withdrawDecisionInput = z
+  .object({ decisionId: z.string().min(1) })
+  .strict();
+
+export type ChangeActionToolInput = z.infer<typeof changeActionSchema>;
+export type ProposeChangeSetToolInput = z.infer<typeof proposeChangeSetInput>;
+export type ApplyChangeSetToolInput = z.infer<typeof applyChangeSetInput>;
+export type ReviseChangeSetToolInput = z.infer<typeof reviseChangeSetInput>;

@@ -3,6 +3,8 @@ export * from "./types";
 export {
   useDashboardStore,
   createInitialDoc,
+  MAX_CHANGE_ACTIONS,
+  MAX_CHANGE_SETS,
   createInitialPresence,
   autoLayout,
   genId,
@@ -57,15 +59,23 @@ export type {
 
 // WebMCP: hook + tool catalog + mounting components.
 export { getModelContext, useWebMCPTool } from "./webmcp/useWebMCPTool";
-export type { ModelContextLike, WebMCPToolConfig } from "./webmcp/useWebMCPTool";
+export type {
+  ModelContextLike,
+  ToolRegistrationStatus,
+  WebMCPToolConfig,
+} from "./webmcp/useWebMCPTool";
 export {
+  buildDecisionTools,
+  buildProposalTools,
   buildSelectedTileTools,
   buildStaticTools,
   compactValue,
   csvCell,
   sanitizeMarkdown,
   toCSV,
+  DECISION_TOOL_NAMES,
   DYNAMIC_TOOL_NAMES,
+  PROPOSAL_TOOL_NAMES,
   STATIC_TOOL_NAMES,
 } from "./webmcp/tools";
 export type {
@@ -76,6 +86,11 @@ export type {
 export { WebMCPTools, RegisteredTool } from "./webmcp/WebMCPTools";
 export type { WebMCPToolsProps } from "./webmcp/WebMCPTools";
 export { SelectedTileTools } from "./webmcp/SelectedTileTools";
+// Phase-scoped bundles: mounted only while a proposal / decision is pending.
+export {
+  DecisionScopedTools,
+  ProposalScopedTools,
+} from "./webmcp/PhaseScopedTools";
 
 // Placeholder canvas (kept until apps/web ships the real grid).
 export { StudioCanvas } from "./StudioCanvas";

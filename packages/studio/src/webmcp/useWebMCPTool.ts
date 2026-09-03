@@ -39,6 +39,13 @@ export function getModelContext(): ModelContextLike | null {
   return document.modelContext ?? navigator.modelContext ?? null;
 }
 
+export type ToolRegistrationStatus =
+  | "unavailable"
+  | "registering"
+  | "ready"
+  | "failed"
+  | "unregistered";
+
 export interface WebMCPToolConfig<S extends z.ZodType> {
   /** <=128 chars, [a-z0-9_], verb_noun, stable across releases. */
   name: string;
@@ -50,6 +57,8 @@ export interface WebMCPToolConfig<S extends z.ZodType> {
   /** Dynamic tools: flip to (un)register without unmounting. */
   enabled?: boolean;
   onError?: (err: unknown) => void;
+  /** Reports the real registration lifecycle for honest connection UI. */
+  onStatusChange?: (status: ToolRegistrationStatus, error?: unknown) => void;
 }
 
 /**
@@ -93,13 +102,22 @@ export function makeToolExecute(
 export function useWebMCPTool<S extends z.ZodType>(
   config: WebMCPToolConfig<S>,
 ): void {
-  const { name, description, inputSchema, annotations, enabled = true, onError } =
-    config;
+  const {
+    name,
+    description,
+    inputSchema,
+    annotations,
+    enabled = true,
+    onError,
+    onStatusChange,
+  } = config;
 
   const executeRef = useRef(config.execute);
   executeRef.current = config.execute;
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
 
   // zod v4 -> JSON Schema. Serialized string doubles as a stable dep key.
   const jsonSchema = useMemo(() => z.toJSONSchema(inputSchema), [inputSchema]);
@@ -109,34 +127,67 @@ export function useWebMCPTool<S extends z.ZodType>(
   const annotationsKey = JSON.stringify(annotations ?? {});
 
   useEffect(() => {
-    if (!enabled) return;
-    const mc = getModelContext();
-    if (!mc) return; // no WebMCP runtime: silent no-op (page shows a badge)
+    if (!enabled) {
+      onStatusChangeRef.current?.("unregistered");
+      return;
+    }
 
     const controller = new AbortController();
+    let retryId: ReturnType<typeof setInterval> | undefined;
+    let started = false;
 
-    mc.registerTool(
-      {
-        name,
-        description,
-        inputSchema: JSON.parse(schemaKey) as object,
-        annotations: JSON.parse(annotationsKey) as {
-          readOnlyHint?: boolean;
-          untrustedContentHint?: boolean;
+    const register = (): boolean => {
+      if (started || controller.signal.aborted) return started;
+      const mc = getModelContext();
+      if (!mc) {
+        onStatusChangeRef.current?.("unavailable");
+        return false;
+      }
+      started = true;
+      onStatusChangeRef.current?.("registering");
+      mc.registerTool(
+        {
+          name,
+          description,
+          inputSchema: JSON.parse(schemaKey) as object,
+          annotations: JSON.parse(annotationsKey) as {
+            readOnlyHint?: boolean;
+            untrustedContentHint?: boolean;
+          },
+          execute: makeToolExecute(
+            () => zodRef.current,
+            (input, signal) => executeRef.current(input as z.output<S>, signal),
+            controller.signal,
+          ),
         },
-        execute: makeToolExecute(
-          () => zodRef.current,
-          (input, signal) => executeRef.current(input as z.output<S>, signal),
-          controller.signal,
-        ),
-      },
-      { signal: controller.signal },
-    ).catch((err: unknown) => {
-      if (controller.signal.aborted) return; // unmount race: expected
-      onErrorRef.current?.(err); // dup name, bad schema, SecurityError...
-      console.warn(`[webmcp] registerTool(${name}) failed`, err);
-    });
+        { signal: controller.signal },
+      )
+        .then(() => {
+          if (!controller.signal.aborted) {
+            onStatusChangeRef.current?.("ready");
+          }
+        })
+        .catch((err: unknown) => {
+          if (controller.signal.aborted) return; // unmount race: expected
+          onStatusChangeRef.current?.("failed", err);
+          onErrorRef.current?.(err); // dup name, bad schema, SecurityError...
+          console.warn(`[webmcp] registerTool(${name}) failed`, err);
+        });
+      return true;
+    };
 
-    return () => controller.abort(); // unregister on unmount
+    // Some browser hosts inject modelContext just after hydration. Retry the
+    // feature check without re-registering; the first real attempt wins.
+    if (!register()) {
+      retryId = setInterval(() => {
+        if (register() && retryId !== undefined) clearInterval(retryId);
+      }, 1000);
+    }
+
+    return () => {
+      if (retryId !== undefined) clearInterval(retryId);
+      controller.abort();
+      onStatusChangeRef.current?.("unregistered");
+    };
   }, [name, description, schemaKey, annotationsKey, enabled]);
 }

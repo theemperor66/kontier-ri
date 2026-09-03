@@ -262,7 +262,13 @@ describe("presence: lifecycle boundaries", () => {
       filters: { filters: [], dateRange: null },
       tiles: [],
     });
-    expect(s().presence).toEqual({ plan: null, insights: [] });
+    expect(s().presence).toEqual({
+      session: null,
+      plan: null,
+      insights: [],
+      decisions: [],
+      changeSets: [],
+    });
   });
 });
 
@@ -410,11 +416,11 @@ describe("presence tools", () => {
     );
   });
 
-  it("the 4 presence tools are part of the static surface (36 total)", () => {
+  it("the existing 4 presence tools remain in the static surface (40 total)", () => {
     for (const name of ["present_plan", "update_plan_step", "propose_insight", "clear_plan"]) {
       expect(tools.has(name)).toBe(true);
     }
-    expect(tools.size).toBe(36);
+    expect(tools.size).toBe(40);
   });
 
   it("present_plan / update_plan_step / clear_plan acks are compact", async () => {

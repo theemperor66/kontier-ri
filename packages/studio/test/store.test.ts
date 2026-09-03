@@ -278,3 +278,46 @@ describe("selection state", () => {
     expect(s().brushedRange).toBeNull();
   });
 });
+
+describe("tidyLayout", () => {
+  it("packs the active page upward in ONE undoable command", () => {
+    const top = addTile();
+    const stranded = s().addTile(
+      { ...kpiInput, title: "Stranded", layout: { x: 0, y: 6, w: 3, h: 2 } },
+      human,
+    );
+    if (!stranded.ok || !stranded.tileId) throw new Error("addTile failed");
+    const undoDepth = s().undoStack.length;
+
+    expect(s().tidyLayout({ origin: "human", label: "Tidied the layout" })).toMatchObject({
+      ok: true,
+    });
+    const byId = new Map(s().doc.tiles.map((tile) => [tile.id, tile]));
+    expect(byId.get(top)!.layout.y).toBe(0);
+    // The stranded tile falls to the first free row under the top tile.
+    expect(byId.get(stranded.tileId)!.layout.y).toBe(2);
+    expect(s().undoStack).toHaveLength(undoDepth + 1);
+    expect(s().activityLog[0]).toMatchObject({
+      by: "human",
+      label: "Tidied the layout",
+    });
+
+    // One undo restores every moved tile.
+    s().undo();
+    expect(
+      s().doc.tiles.find((tile) => tile.id === stranded.tileId)!.layout.y,
+    ).toBe(6);
+  });
+
+  it("refuses when the layout is already packed or the page is empty", () => {
+    expect(s().tidyLayout(human)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("no visuals"),
+    });
+    addTile();
+    expect(s().tidyLayout(human)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("already tidy"),
+    });
+  });
+});

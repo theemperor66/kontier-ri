@@ -345,6 +345,9 @@ export interface ActionOk {
   tileId?: string;
   pageId?: string;
   insightId?: string;
+  sessionId?: string;
+  decisionId?: string;
+  changeSetId?: string;
 }
 
 export interface ActionConflict {
@@ -407,7 +410,7 @@ export interface ActivityEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Agent presence (docs/TOOLS.md Group 6) — ephemeral co-working state.
+// Collaboration presence — ephemeral human-agent co-working state.
 // NOT part of DashboardDoc: never in undo history, never persisted, cleared
 // on doc switch (resetDashboard). Changes ARE activity-logged.
 // ---------------------------------------------------------------------------
@@ -456,9 +459,156 @@ export interface Insight {
   at: number;
 }
 
+export type WorkSessionPhase =
+  | "ready"
+  | "planning"
+  | "working"
+  | "review"
+  | "complete"
+  | "paused";
+
+/** One ephemeral human-agent work session for the current dashboard. */
+export interface WorkSession {
+  id: string;
+  objective: string;
+  phase: WorkSessionPhase;
+  /** epoch ms */
+  createdAt: number;
+  /** epoch ms */
+  updatedAt: number;
+  /** epoch ms; present only after completeWork. */
+  completedAt?: number;
+  summary?: string;
+  outcomes: string[];
+}
+
+export interface DecisionOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
+export interface DecisionAnswer {
+  optionId: string;
+  note?: string;
+}
+
+export type DecisionStatus = "pending" | "answered" | "dismissed";
+
+/** A material ambiguity the agent has asked the human to resolve. */
+export interface DecisionRequest {
+  id: string;
+  question: string;
+  context: string;
+  options: DecisionOption[];
+  recommendedOptionId?: string;
+  status: DecisionStatus;
+  answer?: DecisionAnswer;
+  /** epoch ms */
+  createdAt: number;
+  /** epoch ms; also records the answer/dismiss timestamp. */
+  updatedAt: number;
+}
+
+// ---------------------------------------------------------------------------
+// Change sets — reviewable MULTI-action proposals (Phase B).
+// A single insight proposes one action; a change set groups 1..8 related
+// edits behind ONE human review. Applying runs every selected action
+// through the normal command layer, then collapses them into ONE undo step.
+// ---------------------------------------------------------------------------
+
+/**
+ * One staged edit inside a change set. Payloads mirror the corresponding
+ * tools (add_tile, update_tile, remove_tile, add_annotation,
+ * set_global_filter, set_tile_filters) and are validated strictly at
+ * propose time — nothing runs until the human approves.
+ */
+export type ChangeAction = {
+  /** Short reason for THIS single edit (shown next to the diff row). */
+  note?: string;
+} & (
+  | { kind: "add_tile"; payload: AddTileInput }
+  | { kind: "update_tile"; payload: { tileId: string; patch: TilePatch } }
+  | { kind: "remove_tile"; payload: { tileId: string } }
+  | {
+      kind: "add_annotation";
+      payload: { tileId: string; text: string; anchor?: Annotation["anchor"] };
+    }
+  | { kind: "set_filter"; payload: GlobalFilter }
+  | {
+      kind: "set_tile_filters";
+      payload: { tileId: string; filters: TileFilter[] };
+    }
+);
+
+export type ChangeActionKind = ChangeAction["kind"];
+
+export type ChangeSetStatus =
+  | "proposed"
+  | "applied"
+  | "partially_applied"
+  | "rejected";
+
+/** A reviewable bundle of 1..8 staged actions. */
+export interface ChangeSet {
+  id: string;
+  title: string;
+  rationale: string;
+  actions: ChangeAction[];
+  status: ChangeSetStatus;
+  /** epoch ms */
+  createdAt: number;
+  /** epoch ms */
+  updatedAt: number;
+  /** Indexes actually applied (present after apply). */
+  appliedActionIndexes?: number[];
+}
+
+export interface ProposeChangeSetInput {
+  title: string;
+  rationale: string;
+  actions: ChangeAction[];
+}
+
+/** Human review can drop individual rows before applying the rest. */
+export interface ApplyChangeSetOptions {
+  skipIndexes?: number[];
+}
+
+/** Partial replacement of a PROPOSED change set (revise_change_set). */
+export interface ReviseChangeSetInput {
+  title?: string;
+  rationale?: string;
+  actions?: ChangeAction[];
+}
+
+/** A dataset column the human is pointing at (data rail hover / drag). */
+export interface HoveredField {
+  dataset: string;
+  column: string;
+  /** DuckDB type name when the rail knows it. */
+  type?: string;
+}
+
 export interface PresenceState {
+  session: WorkSession | null;
   plan: AgentPlan | null;
   insights: Insight[];
+  decisions: DecisionRequest[];
+  /** Pending/decided multi-action proposals, capped (oldest dropped). */
+  changeSets: ChangeSet[];
+}
+
+export interface RequestDecisionInput {
+  question: string;
+  context: string;
+  options: DecisionOption[];
+  recommendedOptionId?: string;
+}
+
+export interface CompleteWorkInput {
+  summary: string;
+  outcomes: string[];
 }
 
 export interface PresentPlanInput {
@@ -499,8 +649,9 @@ export interface DashboardStore {
   agentPulse: Record<string, number>;
 
   /**
-   * Agent presence (plan card + insight tray) — ephemeral: not undoable,
-   * not persisted, cleared by resetDashboard. Activity-logged.
+   * Collaboration presence (session, decisions, plan, insight tray) —
+   * ephemeral: not undoable, not persisted, cleared by resetDashboard.
+   * Every presence event is activity-logged.
    */
   presence: PresenceState;
 
@@ -508,11 +659,18 @@ export interface DashboardStore {
   selectedTileId: string | null;
   brushedRange: BrushedRange | null;
   hoveredTileId: string | null;
+  /**
+   * Field the human is pointing at in the data rail. Hovering a column is a
+   * real signal about intent, so the agent can read it as focus context.
+   */
+  hoveredField: HoveredField | null;
 
   // commands (undoable, attributed)
   addTile(input: AddTileInput, meta: ActionMeta): ActionResult;
   updateTile(tileId: string, patch: TilePatch, meta: ActionMeta): ActionResult;
   moveTile(tileId: string, layout: TileLayout, meta: ActionMeta): ActionResult;
+  /** Pack the active page's tiles upward in one undoable command. */
+  tidyLayout(meta: ActionMeta): ActionResult;
   removeTile(tileId: string, meta: ActionMeta): ActionResult;
   setFilter(filter: GlobalFilter, meta: ActionMeta): ActionResult;
   clearFilters(meta: ActionMeta): ActionResult;
@@ -559,10 +717,38 @@ export interface DashboardStore {
   removeView(name: string, meta: ActionMeta): ActionResult;
 
   // presence commands (activity-logged but NOT undoable — ephemeral state)
+  /** Start a new brief, or update the objective of the current session. */
+  startWorkSession(objective: string): ActionResult;
+  pauseWorkSession(): ActionResult;
+  resumeWorkSession(): ActionResult;
+  requestDecision(input: RequestDecisionInput): ActionResult;
+  answerDecision(id: string, optionId: string, note?: string): ActionResult;
+  dismissDecision(id: string): ActionResult;
+  completeWork(summary: string, outcomes: string[]): ActionResult;
   presentPlan(input: PresentPlanInput): ActionResult;
   updatePlanStep(index: number, status: PlanStepStatus): ActionResult;
   clearPlan(): ActionResult;
   proposeInsight(input: ProposeInsightInput): ActionResult;
+  /**
+   * Stage 1..8 related edits as ONE reviewable proposal. Validated
+   * strictly; every referenced tile must exist at propose time. Nothing
+   * touches the document until applyChangeSet.
+   */
+  proposeChangeSet(input: ProposeChangeSetInput): ActionResult;
+  /**
+   * Apply the change set's actions (minus `skipIndexes`) through the normal
+   * command layer (origin "agent", force: the human approved), then collapse
+   * them into ONE undo entry and ONE activity entry. A failing action
+   * restores the pre-apply document AND history exactly.
+   */
+  applyChangeSet(id: string, options?: ApplyChangeSetOptions): ActionResult;
+  rejectChangeSet(id: string): ActionResult;
+  /** Agent-side edit of its own still-proposed change set. */
+  reviseChangeSet(id: string, input: ReviseChangeSetInput): ActionResult;
+  /** Agent retracts its own still-proposed change set. */
+  withdrawChangeSet(id: string): ActionResult;
+  /** Agent retracts its own still-pending decision request. */
+  withdrawDecision(id: string): ActionResult;
   /**
    * Accept executes the insight's suggestedAction through the normal
    * command layer (origin "agent", undoable); the state flip itself is not.
@@ -577,6 +763,8 @@ export interface DashboardStore {
   selectTile(tileId: string | null): void;
   setBrushedRange(range: BrushedRange | null): void;
   setHoveredTile(tileId: string | null): void;
+  /** Data-rail hover; cleared with null. Pure UI state, never undoable. */
+  setHoveredField(field: HoveredField | null): void;
   /** UI acknowledges a glow so it can re-trigger on the next agent edit. */
   clearAgentPulse(tileId: string): void;
 

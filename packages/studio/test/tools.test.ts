@@ -125,8 +125,9 @@ beforeEach(() => {
 });
 
 describe("tool inventory", () => {
-  it("registers exactly the 19 static + 3 dynamic tools from docs/TOOLS.md", () => {
+  it("registers exactly the 40 static + 3 dynamic tools", () => {
     expect([...tools.keys()]).toEqual([...STATIC_TOOL_NAMES]);
+    expect(tools.size).toBe(40);
     expect([...dynamicTools.keys()]).toEqual([
       "edit_selected_tile",
       "restyle_selected_tile",

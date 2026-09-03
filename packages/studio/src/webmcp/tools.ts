@@ -13,6 +13,7 @@ import {
   clearCrossFilterInput,
   clearGlobalFiltersInput,
   clearPlanInput,
+  completeWorkInput,
   createCalculatedFieldInput,
   createViewInput,
   describeTileInput,
@@ -23,18 +24,22 @@ import {
   getDashboardStateInput,
   getDatasetSchemaInput,
   getUserFocusInput,
+  getWorkContextInput,
   listCalculatedFieldsInput,
   listDatasetsInput,
   moveTileInput,
   presentPlanInput,
   profileColumnInput,
+  proposeChangeSetInput,
   proposeInsightInput,
+  requestDecisionInput,
   removeCalculatedFieldInput,
   removePageInput,
   removeTileInput,
   removeViewInput,
   renamePageInput,
   restyleSelectedTileInput,
+  reviseChangeSetInput,
   runSqlInput,
   setCrossFilterInput,
   sampleRowsInput,
@@ -48,6 +53,8 @@ import {
   tileSpecSchemas,
   updatePlanStepInput,
   updateTileInput,
+  withdrawChangeSetInput,
+  withdrawDecisionInput,
 } from "../schemas";
 import { normalizeViewName, pruneHumanEdits, useDashboardStore } from "../store";
 import {
@@ -58,9 +65,13 @@ import {
 import type {
   ActionResult,
   AddTileInput,
+  ChangeSet,
   DashboardDoc,
   DashboardStore,
+  ProposeChangeSetInput,
   ProposeInsightInput,
+  RequestDecisionInput,
+  ReviseChangeSetInput,
   Tile,
   TilePatch,
 } from "../types";
@@ -93,7 +104,13 @@ function tool<S extends z.ZodType>(def: ToolDefinition<S>): ToolDefinition {
   return def as unknown as ToolDefinition;
 }
 
-const READ_ONLY = { readOnlyHint: true } as const;
+// Read tools can echo dataset names, values, dashboard copy, or human notes.
+// Mark that content as untrusted so capable hosts keep it out of instruction
+// authority while still using it as data.
+const READ_ONLY = {
+  readOnlyHint: true,
+  untrustedContentHint: true,
+} as const;
 const VALUE_MAX_CHARS = 120;
 const DESCRIBE_ROW_CAP = 50;
 
@@ -174,6 +191,9 @@ function toToolResult(
       ...(result.tileId ? { tileId: result.tileId } : {}),
       ...(result.pageId ? { pageId: result.pageId } : {}),
       ...(result.insightId ? { insightId: result.insightId } : {}),
+      ...(result.sessionId ? { sessionId: result.sessionId } : {}),
+      ...(result.decisionId ? { decisionId: result.decisionId } : {}),
+      ...(result.changeSetId ? { changeSetId: result.changeSetId } : {}),
       ...extra,
     };
   }
@@ -229,6 +249,24 @@ function checkTilePatch(
     return { ok: false, error: "Empty patch: provide title and/or spec keys." };
   }
   return { ok: true, patch: out };
+}
+
+/** Compact, agent-facing view of a staged change set (get_work_context). */
+function changeSetSummary(changeSet: ChangeSet) {
+  return {
+    changeSetId: changeSet.id,
+    title: changeSet.title,
+    rationale: changeSet.rationale,
+    status: changeSet.status,
+    actions: changeSet.actions.map((action) => ({
+      kind: action.kind,
+      ...(action.note ? { note: action.note } : {}),
+    })),
+    ...(changeSet.appliedActionIndexes
+      ? { appliedActionIndexes: changeSet.appliedActionIndexes }
+      : {}),
+    createdAt: iso(changeSet.createdAt),
+  };
 }
 
 function describeTilePayload(tile: Tile) {
@@ -324,7 +362,7 @@ export function toCSV(columns: { name: string }[], rows: unknown[][]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Static tools (19)
+// Static tools (40)
 // ---------------------------------------------------------------------------
 
 export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
@@ -1029,7 +1067,8 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
       name: "get_user_focus",
       description:
         "What the user is pointing at RIGHT NOW: selected tile, brushed " +
-        "chart range, hovered tile, and their edits from the last 10 " +
+        "chart range, hovered tile, the dataset field they are hovering or " +
+        "dragging in the data rail, and their edits from the last 10 " +
         'minutes (tileId "__dashboard__" = dashboard-level properties). ' +
         'Call this whenever the user says "this", "here" or asks about ' +
         "what they are looking at.",
@@ -1047,6 +1086,7 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
           ...(s.selectedTileId ? { selectedTileId: s.selectedTileId } : {}),
           ...(s.brushedRange ? { brushedRange: s.brushedRange } : {}),
           ...(s.hoveredTileId ? { hoveredTileId: s.hoveredTileId } : {}),
+          ...(s.hoveredField ? { hoveredField: s.hoveredField } : {}),
           recentHumanEdits: edits.map((e) => ({
             tileId: e.tileId,
             property: e.property,
@@ -1179,7 +1219,136 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
     }),
   ];
 
-  return [...dataTools, ...buildTools, ...contextTools, ...presenceTools];
+  const collaborationTools: ToolDefinition[] = [
+    tool({
+      name: "get_work_context",
+      description:
+        "Call get_work_context FIRST when starting or resuming work. It returns " +
+        "the live brief/session, shared plan, pending reviews, decisions and " +
+        "human focus without raw data. Publish a plan before editing, use " +
+        "request_decision only for material ambiguity, and close the loop with " +
+        "complete_work.",
+      inputSchema: getWorkContextInput,
+      annotations: READ_ONLY,
+      execute: () => {
+        const s = state();
+        const activePage = s.doc.pages.find(
+          (page) => page.id === s.doc.activePageId,
+        );
+        const recentHumanEdits = pruneHumanEdits(
+          s.recentHumanEdits,
+          Date.now(),
+        );
+        return {
+          session: s.presence.session,
+          plan: s.presence.plan,
+          pendingReviews: s.presence.insights
+            .filter((insight) => insight.state === "proposed")
+            .map((insight) => ({
+              insightId: insight.id,
+              title: insight.title,
+              body: insight.body,
+              severity: insight.severity,
+              ...(insight.tileId ? { tileId: insight.tileId } : {}),
+              ...(insight.suggestedAction
+                ? { suggestedAction: { kind: insight.suggestedAction.kind } }
+                : {}),
+              at: iso(insight.at),
+            })),
+          // Include every status so an agent can observe human answers on its
+          // next orientation read without needing another tool.
+          decisions: s.presence.decisions,
+          // Same reason: the human's verdict on each staged change set is
+          // visible on the next read (applied / partially_applied / rejected).
+          changeSets: s.presence.changeSets.map(changeSetSummary),
+          focus: {
+            activePage: activePage
+              ? { pageId: activePage.id, name: activePage.name }
+              : null,
+            selectedTileId: s.selectedTileId,
+            hoveredTileId: s.hoveredTileId,
+            hoveredField: s.hoveredField,
+            crossFilter: s.doc.crossFilter,
+            brushedRange: s.brushedRange,
+            recentHumanEdits: recentHumanEdits.map((edit) => ({
+              tileId: edit.tileId,
+              property: edit.property,
+              at: iso(edit.at),
+            })),
+          },
+          recentActions: s.activityLog.slice(0, 10).map((entry) => ({
+            by: entry.by,
+            label: entry.label,
+            at: iso(entry.at),
+            ...(entry.undone ? { undone: true } : {}),
+          })),
+          workingAgreement: {
+            agentEdits: "Agent dashboard edits are attributed and undoable.",
+            recentHumanEdits:
+              "Human edits from the last 10 minutes are protected from silent overwrite.",
+            rawData: "Raw data stays local in the browser.",
+            uncertainOrHighImpactChanges:
+              "Use request_decision or propose_insight before applying uncertain or high-impact changes.",
+          },
+        };
+      },
+    }),
+    tool({
+      name: "request_decision",
+      description:
+        "After get_work_context and a published plan, ask the human to resolve " +
+        "ONE material ambiguity. Provide 2–5 clear options and optionally " +
+        "recommend one of their ids. Do not ask for routine, reversible choices; " +
+        "continue work after the answer appears in get_work_context.",
+      inputSchema: requestDecisionInput,
+      execute: (input) => {
+        const result = state().requestDecision(input as RequestDecisionInput);
+        return toToolResult(result, result.ok ? { status: "pending" } : {});
+      },
+    }),
+    tool({
+      name: "complete_work",
+      description:
+        "Close the visible work-session loop after updating the plan and reviews. " +
+        "Provide a concise summary and outcome list. Call complete_work once the " +
+        "brief is finished; unresolved uncertainty belongs in the summary.",
+      inputSchema: completeWorkInput,
+      execute: ({ summary, outcomes }) => {
+        const result = state().completeWork(summary, outcomes);
+        return toToolResult(result, result.ok ? { phase: "complete" } : {});
+      },
+    }),
+    tool({
+      name: "propose_change_set",
+      description:
+        "Group 1–8 RELATED edits into ONE reviewable change set instead of " +
+        "applying them one by one: {title, rationale, actions: [{kind, " +
+        "payload, note?}]}. kind is add_tile|update_tile|remove_tile|" +
+        "add_annotation|set_filter|set_tile_filters and each payload matches " +
+        "the tool of the same name. Give every action a short note saying why " +
+        "THAT edit is needed. Nothing changes until the human applies the set; " +
+        "they can drop individual actions, and applying is one undo step. " +
+        "Read the outcome back through get_work_context.",
+      inputSchema: proposeChangeSetInput,
+      execute: (input) => {
+        const result = state().proposeChangeSet(input as ProposeChangeSetInput);
+        return toToolResult(
+          result,
+          result.ok
+            ? { status: "proposed", actions: input.actions.length }
+            : {},
+        );
+      },
+    }),
+  ];
+
+  return [
+    ...dataTools,
+    ...buildTools,
+    ...contextTools,
+    ...presenceTools,
+    ...collaborationTools,
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -1301,6 +1470,109 @@ export function buildSelectedTileTools(
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Phase-scoped dynamic tools — the toolbelt follows the workflow phase.
+// Review-phase tools exist only while something is actually awaiting the
+// human: they unregister as soon as the queue empties.
+// ---------------------------------------------------------------------------
+
+/** Change sets still awaiting the human's verdict. */
+function pendingChangeSets(state: () => DashboardStore): ChangeSet[] {
+  return state().presence.changeSets.filter(
+    (changeSet) => changeSet.status === "proposed",
+  );
+}
+
+/**
+ * Tools valid ONLY while a change set is pending (2). The agent may correct
+ * or retract its own proposal, but never apply it — applying is the human's
+ * click. Returns [] when nothing is pending, so nothing is registered.
+ */
+export function buildProposalTools(ctx: ToolContext): ToolDefinition[] {
+  const store: StudioStoreApi = ctx.store ?? useDashboardStore;
+  const state = () => store.getState();
+  const pending = pendingChangeSets(state);
+  if (pending.length === 0) return [];
+
+  const listed = pending
+    .map((changeSet) => `${changeSet.id} (“${changeSet.title}”)`)
+    .join(", ");
+
+  return [
+    tool({
+      name: "revise_change_set",
+      description:
+        `Replace the content of a change set that is still awaiting review: ${listed}. ` +
+        "Input {changeSetId, title?, rationale?, actions?}; actions follow " +
+        "propose_change_set and REPLACE the staged list. Use this after the " +
+        "human comments on a proposal instead of proposing a second set. " +
+        "Fails once the set is applied or rejected.",
+      inputSchema: reviseChangeSetInput,
+      execute: ({ changeSetId, title, rationale, actions }) => {
+        const input = {
+          ...(title !== undefined ? { title } : {}),
+          ...(rationale !== undefined ? { rationale } : {}),
+          ...(actions !== undefined ? { actions } : {}),
+        } as ReviseChangeSetInput;
+        const result = state().reviseChangeSet(changeSetId, input);
+        return toToolResult(
+          result,
+          result.ok
+            ? {
+                status: "proposed",
+                ...(actions ? { actions: actions.length } : {}),
+              }
+            : {},
+        );
+      },
+    }),
+    tool({
+      name: "withdraw_change_set",
+      description:
+        `Retract one of your own pending change sets (${listed}) when it is no ` +
+        "longer the right proposal: {changeSetId}. It disappears from the " +
+        "human's review queue. Fails once the set is applied or rejected.",
+      inputSchema: withdrawChangeSetInput,
+      execute: ({ changeSetId }) => {
+        const result = state().withdrawChangeSet(changeSetId);
+        return toToolResult(result, result.ok ? { status: "withdrawn" } : {});
+      },
+    }),
+  ];
+}
+
+/**
+ * Tool valid ONLY while a decision request is pending (1): the agent can
+ * take back a question it no longer needs answered.
+ */
+export function buildDecisionTools(ctx: ToolContext): ToolDefinition[] {
+  const store: StudioStoreApi = ctx.store ?? useDashboardStore;
+  const state = () => store.getState();
+  const pending = state().presence.decisions.filter(
+    (decision) => decision.status === "pending",
+  );
+  if (pending.length === 0) return [];
+
+  const listed = pending
+    .map((decision) => `${decision.id} (“${decision.question}”)`)
+    .join(", ");
+
+  return [
+    tool({
+      name: "withdraw_decision",
+      description:
+        `Retract one of your own unanswered questions (${listed}) when your own ` +
+        "work already resolved it: {decisionId}. The card leaves the human's " +
+        "review queue. Fails once the human answered or dismissed it.",
+      inputSchema: withdrawDecisionInput,
+      execute: ({ decisionId }) => {
+        const result = state().withdrawDecision(decisionId);
+        return toToolResult(result, result.ok ? { status: "withdrawn" } : {});
+      },
+    }),
+  ];
+}
+
 export const STATIC_TOOL_NAMES = [
   "list_datasets",
   "get_dataset_schema",
@@ -1338,6 +1610,10 @@ export const STATIC_TOOL_NAMES = [
   "update_plan_step",
   "propose_insight",
   "clear_plan",
+  "get_work_context",
+  "request_decision",
+  "complete_work",
+  "propose_change_set",
 ] as const;
 
 export const DYNAMIC_TOOL_NAMES = [
@@ -1345,3 +1621,12 @@ export const DYNAMIC_TOOL_NAMES = [
   "restyle_selected_tile",
   "explain_selected_tile",
 ] as const;
+
+/** Registered only while a change set is awaiting review. */
+export const PROPOSAL_TOOL_NAMES = [
+  "revise_change_set",
+  "withdraw_change_set",
+] as const;
+
+/** Registered only while a decision request is unanswered. */
+export const DECISION_TOOL_NAMES = ["withdraw_decision"] as const;

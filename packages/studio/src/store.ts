@@ -2,19 +2,24 @@ import { create } from "zustand";
 import * as z from "zod";
 import { assertSelectOnly, ReadOnlySQLError } from "@kontier-ri/datasource";
 import type {
+  HoveredField,
   ActionConflict,
   ActionMeta,
   ActionResult,
   ActivityEntry,
   AddTileInput,
   Annotation,
+  ApplyChangeSetOptions,
   BrushedRange,
   CalculatedField,
+  ChangeAction,
+  ChangeSet,
   CrossFilter,
   DashboardDoc,
   DashboardDocInput,
   DashboardStore,
   DateRange,
+  DecisionRequest,
   GlobalFilter,
   HistoryEntry,
   HumanEdit,
@@ -23,7 +28,10 @@ import type {
   PlanStepStatus,
   PresenceState,
   PresentPlanInput,
+  ProposeChangeSetInput,
   ProposeInsightInput,
+  RequestDecisionInput,
+  ReviseChangeSetInput,
   ThemeSettings,
   Tile,
   TileFilter,
@@ -31,10 +39,18 @@ import type {
   TilePatch,
   TileType,
   ViewDef,
+  WorkSessionPhase,
 } from "./types";
 import { GRID_COLUMNS } from "./types";
 import { migrateDoc, withActivePageMirror } from "./migrate";
-import { suggestedActionSchema } from "./schemas";
+import {
+  completeWorkInput,
+  proposeChangeSetInput,
+  requestDecisionInput,
+  reviseChangeSetInput,
+  suggestedActionSchema,
+  tileSpecPatchSchemas,
+} from "./schemas";
 
 /** Conflict window: agent may not silently overwrite newer human edits. */
 export const HUMAN_EDIT_WINDOW_MS = 10 * 60_000;
@@ -47,9 +63,19 @@ export const DASHBOARD_SCOPE = "__dashboard__";
 export const VIEW_PREFIX = "view_";
 /** Insight tray cap: oldest insights drop off past this. */
 export const MAX_INSIGHTS = 30;
+/** Change-set review queue cap: oldest sets drop off past this. */
+export const MAX_CHANGE_SETS = 10;
+/** Max staged actions inside one change set (mirrors the zod schema). */
+export const MAX_CHANGE_ACTIONS = 8;
 
 export function createInitialPresence(): PresenceState {
-  return { plan: null, insights: [] };
+  return {
+    session: null,
+    plan: null,
+    insights: [],
+    decisions: [],
+    changeSets: [],
+  };
 }
 
 export const DEFAULT_TILE_SIZE: Record<TileType, { w: number; h: number }> = {
@@ -68,7 +94,7 @@ export function genId(prefix: string): string {
 export function createInitialDoc(): DashboardDoc {
   return migrateDoc({
     title: "Untitled dashboard",
-    theme: { mode: "dark" },
+    theme: { mode: "light" },
     filters: { filters: [], dateRange: null },
     tiles: [],
   });
@@ -295,12 +321,15 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
    * Activity-only log for ephemeral presence events: appears in the feed,
    * pushes NO undo entry (presence is not part of the document).
    */
-  function logPresence(label: string): void {
+  function logPresence(
+    label: string,
+    by: ActivityEntry["by"] = "agent",
+  ): void {
     set((s) => ({
       activityLog: [
         {
           id: genId("cmd"),
-          by: "agent" as const,
+          by,
           label,
           at: Date.now(),
           undone: false,
@@ -308,6 +337,137 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
         ...s.activityLog,
       ].slice(0, MAX_ACTIVITY),
     }));
+  }
+
+  /** Pick the honest phase when a paused/review-blocked session resumes. */
+  function resumedPhase(presence: PresenceState): WorkSessionPhase {
+    if (
+      presence.decisions.some((decision) => decision.status === "pending") ||
+      presence.insights.some((insight) => insight.state === "proposed") ||
+      presence.changeSets.some((set) => set.status === "proposed")
+    ) {
+      return "review";
+    }
+    const plan = presence.plan;
+    if (!plan) return "ready";
+    if (plan.steps.every((step) => step.status === "done")) return "review";
+    if (
+      plan.steps.some(
+        (step) =>
+          step.status === "active" ||
+          step.status === "done" ||
+          step.status === "failed",
+      )
+    ) {
+      return "working";
+    }
+    return "planning";
+  }
+
+  // -- change sets ---------------------------------------------------------
+
+  /** Tile a staged action targets (null for add_tile / set_filter). */
+  function changeActionTileId(action: ChangeAction): string | null {
+    return action.kind === "add_tile" || action.kind === "set_filter"
+      ? null
+      : action.payload.tileId;
+  }
+
+  /**
+   * Propose-time guard: every referenced tile must exist NOW and every
+   * update_tile patch must fit that tile's type. A set that cannot be
+   * reviewed honestly is never staged.
+   */
+  function checkChangeActions(actions: ChangeAction[]): string | null {
+    for (const [index, action] of actions.entries()) {
+      const tileId = changeActionTileId(action);
+      if (tileId === null) continue;
+      const tile = getTile(tileId);
+      if (!tile) {
+        return `Action ${index} (${action.kind}) references unknown tile "${tileId}". Use get_dashboard_state to list tiles.`;
+      }
+      if (action.kind === "set_tile_filters" && tile.type === "markdown") {
+        return `Action ${index} (set_tile_filters) targets a markdown tile, which cannot have filters.`;
+      }
+      if (action.kind === "update_tile" && action.payload.patch.spec) {
+        const parsed = tileSpecPatchSchemas[tile.type].safeParse(
+          action.payload.patch.spec,
+        );
+        if (!parsed.success) {
+          return `Action ${index} (update_tile) does not fit a ${tile.type} tile spec: ${z.prettifyError(parsed.error)}`;
+        }
+      }
+    }
+    return null;
+  }
+
+  /** Run ONE staged action through the normal (undoable) command layer. */
+  function runChangeAction(action: ChangeAction, meta: ActionMeta): ActionResult {
+    const store = get();
+    switch (action.kind) {
+      case "add_tile": {
+        const payload = action.payload;
+        const input: AddTileInput =
+          payload.type === "markdown"
+            ? {
+                ...payload,
+                // Same raw-HTML strip the add_tile tool applies.
+                spec: {
+                  ...payload.spec,
+                  content: payload.spec.content.replace(/<[^>]*>/g, ""),
+                },
+              }
+            : payload;
+        return store.addTile(input, meta);
+      }
+      case "update_tile": {
+        const { tileId, patch } = action.payload;
+        const tile = getTile(tileId);
+        const spec = patch.spec;
+        const sanitized =
+          tile?.type === "markdown" && typeof spec?.["content"] === "string"
+            ? {
+                ...patch,
+                spec: {
+                  ...spec,
+                  content: (spec["content"] as string).replace(/<[^>]*>/g, ""),
+                },
+              }
+            : patch;
+        return store.updateTile(tileId, sanitized, meta);
+      }
+      case "remove_tile":
+        return store.removeTile(action.payload.tileId, meta);
+      case "add_annotation":
+        return store.addAnnotation(
+          action.payload.tileId,
+          action.payload.text,
+          action.payload.anchor,
+          meta,
+        );
+      case "set_filter":
+        return store.setFilter(action.payload, meta);
+      case "set_tile_filters":
+        return store.setTileFilters(
+          action.payload.tileId,
+          action.payload.filters,
+          meta,
+        );
+    }
+  }
+
+  /** Presence patch that also re-derives the session phase after a review. */
+  function settleChangeSets(changeSets: ChangeSet[]): { presence: PresenceState } {
+    const presence = get().presence;
+    const next: PresenceState = { ...presence, changeSets };
+    if (next.session && next.session.phase === "review") {
+      next.session = {
+        ...next.session,
+        phase: resumedPhase(next),
+        updatedAt: Date.now(),
+      };
+    }
+    return { presence: next };
   }
 
   return {
@@ -321,6 +481,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
     selectedTileId: null,
     brushedRange: null,
     hoveredTileId: null,
+    hoveredField: null,
 
     addTile(input: AddTileInput, meta: ActionMeta): ActionResult {
       const s = get();
@@ -390,6 +551,54 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
       return commit(meta, doc, {
         tileId,
         humanProps: [{ tileId, property: "layout" }],
+      });
+    },
+
+    /**
+     * Pack the active page's tiles upward into free space (design: "Tidy").
+     * One command, so the whole layout change is a single undo step.
+     */
+    tidyLayout(meta: ActionMeta): ActionResult {
+      const doc = get().doc;
+      const page = doc.pages.find((p) => p.id === doc.activePageId);
+      if (!page || page.tiles.length === 0) {
+        return { ok: false, error: "This page has no visuals to tidy." };
+      }
+      const placed: Tile[] = [];
+      const ordered = [...page.tiles].sort(
+        (a, b) => a.layout.y - b.layout.y || a.layout.x - b.layout.x,
+      );
+      let moved = 0;
+      for (const tile of ordered) {
+        let y = tile.layout.y;
+        while (
+          y > 0 &&
+          !placed.some((other) =>
+            overlaps({ ...tile.layout, y: y - 1 }, other.layout),
+          )
+        ) {
+          y -= 1;
+        }
+        if (y !== tile.layout.y) moved += 1;
+        placed.push({ ...tile, layout: { ...tile.layout, y } });
+      }
+      if (moved === 0) {
+        return { ok: false, error: "The layout is already tidy." };
+      }
+      const byId = new Map(placed.map((tile) => [tile.id, tile]));
+      const next = {
+        ...doc,
+        pages: doc.pages.map((p) =>
+          p.id === page.id
+            ? { ...p, tiles: p.tiles.map((tile) => byId.get(tile.id) ?? tile) }
+            : p,
+        ),
+      };
+      return commit(meta, next, {
+        humanProps: placed.map((tile) => ({
+          tileId: tile.id,
+          property: "layout",
+        })),
       });
     },
 
@@ -698,21 +907,319 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
       });
     },
 
-    // -- agent presence (ephemeral: no undo entries; activity-logged) --------
+    // -- collaboration presence (ephemeral, activity-logged, not undoable) ---
+
+    startWorkSession(objective: string): ActionResult {
+      const trimmed = typeof objective === "string" ? objective.trim() : "";
+      if (trimmed.length === 0) {
+        return { ok: false, error: "A work-session objective is required." };
+      }
+      if (trimmed.length > 600) {
+        return {
+          ok: false,
+          error: "The work-session objective must be 600 characters or fewer.",
+        };
+      }
+
+      const current = get().presence.session;
+      const now = Date.now();
+      if (current && current.phase !== "complete") {
+        set((s) => ({
+          presence: {
+            ...s.presence,
+            session: { ...current, objective: trimmed, updatedAt: now },
+          },
+        }));
+        logPresence(`Updated work brief: “${trimmed}”`, "human");
+        return { ok: true, sessionId: current.id };
+      }
+
+      const session = {
+        id: genId("session"),
+        objective: trimmed,
+        phase: "ready" as const,
+        createdAt: now,
+        updatedAt: now,
+        outcomes: [],
+      };
+      set((s) => ({
+        presence: {
+          // A completed session's plan/reviews belong to that old session.
+          ...(current
+            ? { plan: null, insights: [], decisions: [], changeSets: [] }
+            : s.presence),
+          session,
+        },
+      }));
+      logPresence(`Started work session: “${trimmed}”`, "human");
+      return { ok: true, sessionId: session.id };
+    },
+
+    pauseWorkSession(): ActionResult {
+      const session = get().presence.session;
+      if (!session) {
+        return { ok: false, error: "No work session is active." };
+      }
+      if (session.phase === "complete") {
+        return { ok: false, error: "The work session is already complete." };
+      }
+      if (session.phase === "paused") {
+        return { ok: false, error: "The work session is already paused." };
+      }
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          session: { ...session, phase: "paused", updatedAt: Date.now() },
+        },
+      }));
+      logPresence("Paused the work session", "human");
+      return { ok: true, sessionId: session.id };
+    },
+
+    resumeWorkSession(): ActionResult {
+      const presence = get().presence;
+      const session = presence.session;
+      if (!session) {
+        return { ok: false, error: "No work session is active." };
+      }
+      if (session.phase !== "paused") {
+        return { ok: false, error: "The work session is not paused." };
+      }
+      const phase = resumedPhase(presence);
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          session: { ...session, phase, updatedAt: Date.now() },
+        },
+      }));
+      logPresence("Resumed the work session", "human");
+      return { ok: true, sessionId: session.id };
+    },
+
+    requestDecision(input: RequestDecisionInput): ActionResult {
+      const parsed = requestDecisionInput.safeParse(input);
+      if (!parsed.success) {
+        return {
+          ok: false,
+          error: `Invalid decision request: ${z.prettifyError(parsed.error)}`,
+        };
+      }
+      const currentSession = get().presence.session;
+      if (currentSession?.phase === "complete") {
+        return {
+          ok: false,
+          error: "The work session is complete. Start a new brief first.",
+        };
+      }
+      const now = Date.now();
+      const decision: DecisionRequest = {
+        id: genId("decision"),
+        question: parsed.data.question,
+        context: parsed.data.context,
+        options: parsed.data.options.map((option) => ({ ...option })),
+        ...(parsed.data.recommendedOptionId
+          ? { recommendedOptionId: parsed.data.recommendedOptionId }
+          : {}),
+        status: "pending",
+        createdAt: now,
+        updatedAt: now,
+      };
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          decisions: [...s.presence.decisions, decision],
+          session:
+            s.presence.session &&
+            s.presence.session.phase !== "paused" &&
+            s.presence.session.phase !== "complete"
+              ? {
+                  ...s.presence.session,
+                  phase: "review",
+                  updatedAt: now,
+                }
+              : s.presence.session,
+        },
+      }));
+      logPresence(`Decision requested: “${decision.question}”`);
+      return { ok: true, decisionId: decision.id };
+    },
+
+    answerDecision(
+      id: string,
+      optionId: string,
+      note?: string,
+    ): ActionResult {
+      const presence = get().presence;
+      const decision = presence.decisions.find((item) => item.id === id);
+      if (!decision) {
+        return { ok: false, error: `No decision with id "${id}".` };
+      }
+      if (decision.status !== "pending") {
+        return {
+          ok: false,
+          error: `Decision "${decision.question}" was already ${decision.status}.`,
+        };
+      }
+      if (!decision.options.some((option) => option.id === optionId)) {
+        return {
+          ok: false,
+          error: `Option "${optionId}" does not belong to decision "${id}".`,
+        };
+      }
+      if (note !== undefined && typeof note !== "string") {
+        return { ok: false, error: "Decision note must be a string." };
+      }
+      const normalizedNote = note?.trim();
+      if (normalizedNote && normalizedNote.length > 600) {
+        return {
+          ok: false,
+          error: "Decision note must be 600 characters or fewer.",
+        };
+      }
+
+      const now = Date.now();
+      const decisions = presence.decisions.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              status: "answered" as const,
+              answer: {
+                optionId,
+                ...(normalizedNote ? { note: normalizedNote } : {}),
+              },
+              updatedAt: now,
+            }
+          : item,
+      );
+      const nextPresence: PresenceState = { ...presence, decisions };
+      if (
+        nextPresence.session?.phase === "review" &&
+        !decisions.some((item) => item.status === "pending")
+      ) {
+        nextPresence.session = {
+          ...nextPresence.session,
+          phase: resumedPhase(nextPresence),
+          updatedAt: now,
+        };
+      }
+      set({ presence: nextPresence });
+      const option = decision.options.find((item) => item.id === optionId)!;
+      logPresence(
+        `Answered decision “${decision.question}”: ${option.label}`,
+        "human",
+      );
+      return { ok: true, decisionId: id };
+    },
+
+    dismissDecision(id: string): ActionResult {
+      const presence = get().presence;
+      const decision = presence.decisions.find((item) => item.id === id);
+      if (!decision) {
+        return { ok: false, error: `No decision with id "${id}".` };
+      }
+      if (decision.status !== "pending") {
+        return {
+          ok: false,
+          error: `Decision "${decision.question}" was already ${decision.status}.`,
+        };
+      }
+      const now = Date.now();
+      const decisions = presence.decisions.map((item) =>
+        item.id === id
+          ? { ...item, status: "dismissed" as const, updatedAt: now }
+          : item,
+      );
+      const nextPresence: PresenceState = { ...presence, decisions };
+      if (
+        nextPresence.session?.phase === "review" &&
+        !decisions.some((item) => item.status === "pending")
+      ) {
+        nextPresence.session = {
+          ...nextPresence.session,
+          phase: resumedPhase(nextPresence),
+          updatedAt: now,
+        };
+      }
+      set({ presence: nextPresence });
+      logPresence(`Dismissed decision: “${decision.question}”`, "human");
+      return { ok: true, decisionId: id };
+    },
+
+    completeWork(summary: string, outcomes: string[]): ActionResult {
+      const parsed = completeWorkInput.safeParse({ summary, outcomes });
+      if (!parsed.success) {
+        return {
+          ok: false,
+          error: `Invalid work summary: ${z.prettifyError(parsed.error)}`,
+        };
+      }
+      const session = get().presence.session;
+      if (!session) {
+        return {
+          ok: false,
+          error: "No work session is active. A human must start a brief first.",
+        };
+      }
+      if (session.phase === "complete") {
+        return { ok: false, error: "The work session is already complete." };
+      }
+      const now = Date.now();
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          session: {
+            ...session,
+            phase: "complete",
+            summary: parsed.data.summary,
+            outcomes: [...parsed.data.outcomes],
+            completedAt: now,
+            updatedAt: now,
+          },
+        },
+      }));
+      logPresence(`Completed work: “${parsed.data.summary}”`);
+      return { ok: true, sessionId: session.id };
+    },
 
     presentPlan(input: PresentPlanInput): ActionResult {
       if (input.steps.length === 0) {
         return { ok: false, error: "A plan needs at least one step." };
       }
+      const now = Date.now();
       const plan = {
         ...(input.title !== undefined ? { title: input.title } : {}),
         steps: input.steps.map((st) => ({
           label: st.label,
           status: st.status ?? ("pending" as const),
         })),
-        updatedAt: Date.now(),
+        updatedAt: now,
       };
-      set((s) => ({ presence: { ...s.presence, plan } }));
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          plan,
+          session:
+            s.presence.session &&
+            s.presence.session.phase !== "paused" &&
+            s.presence.session.phase !== "complete"
+              ? {
+                  ...s.presence.session,
+                  phase: s.presence.decisions.some(
+                    (decision) => decision.status === "pending",
+                  )
+                    ? "review"
+                    : plan.steps.every((step) => step.status === "done")
+                      ? "review"
+                      : plan.steps.some((step) => step.status !== "pending")
+                        ? "working"
+                        : s.presence.session.phase === "ready"
+                          ? "planning"
+                          : s.presence.session.phase,
+                  updatedAt: now,
+                }
+              : s.presence.session,
+        },
+      }));
       logPresence(
         input.title !== undefined
           ? `Agent shared a plan: “${input.title}”`
@@ -735,18 +1242,36 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
           error: `Step index ${index} is out of range (0..${plan.steps.length - 1}).`,
         };
       }
-      set((s) => ({
-        presence: {
-          ...s.presence,
-          plan: {
-            ...plan,
-            steps: plan.steps.map((st, i) =>
-              i === index ? { ...st, status } : st,
-            ),
-            updatedAt: Date.now(),
+      const now = Date.now();
+      const steps = plan.steps.map((st, i) =>
+        i === index ? { ...st, status } : st,
+      );
+      set((s) => {
+        const session = s.presence.session;
+        let phase = session?.phase;
+        if (session && phase !== "paused" && phase !== "complete") {
+          if (s.presence.decisions.some((item) => item.status === "pending")) {
+            phase = "review";
+          } else if (steps.every((step) => step.status === "done")) {
+            phase = "review";
+          } else if (steps.some((step) => step.status !== "pending")) {
+            phase = "working";
+          } else if (phase === "ready") {
+            phase = "planning";
+          }
+        }
+        return {
+          presence: {
+            ...s.presence,
+            plan: { ...plan, steps, updatedAt: now },
+            session:
+              session && phase
+                ? { ...session, phase, updatedAt: now }
+                : session,
           },
-        },
-      }));
+        };
+      });
+      logPresence(`Plan step “${plan.steps[index]!.label}” marked ${status}`);
       return { ok: true };
     },
 
@@ -778,6 +1303,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
           return notFound(parsed.data.payload.tileId);
         }
       }
+      const now = Date.now();
       const insight: Insight = {
         id: genId("ins"),
         title: input.title,
@@ -788,12 +1314,18 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
           ? { suggestedAction: input.suggestedAction }
           : {}),
         state: "proposed",
-        at: Date.now(),
+        at: now,
       };
       set((s) => ({
         presence: {
           ...s.presence,
           insights: [...s.presence.insights, insight].slice(-MAX_INSIGHTS),
+          session:
+            s.presence.session &&
+            s.presence.session.phase !== "paused" &&
+            s.presence.session.phase !== "complete"
+              ? { ...s.presence.session, phase: "review", updatedAt: now }
+              : s.presence.session,
         },
       }));
       logPresence(`Insight proposed: “${input.title}”`);
@@ -844,14 +1376,27 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
         }
         if (!result.ok) return result; // stays proposed; user can retry
       }
-      set((s) => ({
-        presence: {
-          ...s.presence,
-          insights: s.presence.insights.map((i) =>
-            i.id === id ? { ...i, state: "accepted" as const } : i,
-          ),
-        },
-      }));
+      set((s) => {
+        const now = Date.now();
+        const insights = s.presence.insights.map((i) =>
+          i.id === id ? { ...i, state: "accepted" as const } : i,
+        );
+        const nextPresence = { ...s.presence, insights };
+        const session = s.presence.session;
+        return {
+          presence: {
+            ...nextPresence,
+            session:
+              session && session.phase === "review"
+                ? {
+                    ...session,
+                    phase: resumedPhase(nextPresence),
+                    updatedAt: now,
+                  }
+                : session,
+          },
+        };
+      });
       if (!action) logPresence(`Insight accepted: “${insight.title}”`);
       return { ...result, insightId: id };
     },
@@ -865,16 +1410,324 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
           error: `Insight "${insight.title}" was already ${insight.state}.`,
         };
       }
+      set((s) => {
+        const now = Date.now();
+        const insights = s.presence.insights.map((i) =>
+          i.id === id ? { ...i, state: "dismissed" as const } : i,
+        );
+        const nextPresence = { ...s.presence, insights };
+        const session = s.presence.session;
+        return {
+          presence: {
+            ...nextPresence,
+            session:
+              session && session.phase === "review"
+                ? {
+                    ...session,
+                    phase: resumedPhase(nextPresence),
+                    updatedAt: now,
+                  }
+                : session,
+          },
+        };
+      });
+      logPresence(`Insight dismissed: “${insight.title}”`);
+      return { ok: true, insightId: id };
+    },
+
+    // -- change sets: reviewable multi-action proposals -----------------------
+
+    proposeChangeSet(input: ProposeChangeSetInput): ActionResult {
+      const parsed = proposeChangeSetInput.safeParse(input);
+      if (!parsed.success) {
+        return {
+          ok: false,
+          error: `Invalid change set: ${z.prettifyError(parsed.error)}`,
+        };
+      }
+      const session = get().presence.session;
+      if (session?.phase === "complete") {
+        return {
+          ok: false,
+          error: "The work session is complete. Start a new brief first.",
+        };
+      }
+      const actions = parsed.data.actions as ChangeAction[];
+      const invalid = checkChangeActions(actions);
+      if (invalid) return { ok: false, error: invalid };
+
+      const now = Date.now();
+      const changeSet: ChangeSet = {
+        id: genId("cs"),
+        title: parsed.data.title,
+        rationale: parsed.data.rationale,
+        actions: actions.map((action) => ({ ...action })),
+        status: "proposed",
+        createdAt: now,
+        updatedAt: now,
+      };
       set((s) => ({
         presence: {
           ...s.presence,
-          insights: s.presence.insights.map((i) =>
-            i.id === id ? { ...i, state: "dismissed" as const } : i,
+          changeSets: [...s.presence.changeSets, changeSet].slice(
+            -MAX_CHANGE_SETS,
+          ),
+          session:
+            s.presence.session &&
+            s.presence.session.phase !== "paused" &&
+            s.presence.session.phase !== "complete"
+              ? { ...s.presence.session, phase: "review", updatedAt: now }
+              : s.presence.session,
+        },
+      }));
+      logPresence(
+        `Change set proposed: “${changeSet.title}” (${changeSet.actions.length} changes)`,
+      );
+      return { ok: true, changeSetId: changeSet.id };
+    },
+
+    /**
+     * Human approval path. Every selected action runs through the normal
+     * command layer (attributed, conflict-forced because the human just
+     * approved it) and the resulting entries are then COLLAPSED into one
+     * undo entry + one activity entry: Cmd+Z reverts the whole set.
+     */
+    applyChangeSet(id: string, options?: ApplyChangeSetOptions): ActionResult {
+      const before = get();
+      const changeSet = before.presence.changeSets.find((c) => c.id === id);
+      if (!changeSet) {
+        return { ok: false, error: `No change set with id "${id}".` };
+      }
+      if (changeSet.status !== "proposed") {
+        return {
+          ok: false,
+          error: `Change set “${changeSet.title}” was already ${changeSet.status}.`,
+        };
+      }
+      const skipIndexes = options?.skipIndexes ?? [];
+      for (const index of skipIndexes) {
+        if (
+          !Number.isInteger(index) ||
+          index < 0 ||
+          index >= changeSet.actions.length
+        ) {
+          return {
+            ok: false,
+            error: `skipIndexes entry ${index} is out of range (0..${changeSet.actions.length - 1}).`,
+          };
+        }
+      }
+      const skipped = new Set(skipIndexes);
+      const indexes = changeSet.actions
+        .map((_, index) => index)
+        .filter((index) => !skipped.has(index));
+      if (indexes.length === 0) {
+        return {
+          ok: false,
+          error:
+            "Every action was skipped: nothing to apply. Reject the change set instead.",
+        };
+      }
+
+      // Exact pre-apply snapshot: a failing action rewinds doc AND history.
+      const snapshot = {
+        doc: before.doc,
+        undoStack: before.undoStack,
+        redoStack: before.redoStack,
+        activityLog: before.activityLog,
+        recentHumanEdits: before.recentHumanEdits,
+        agentPulse: before.agentPulse,
+        selectedTileId: before.selectedTileId,
+        hoveredTileId: before.hoveredTileId,
+        brushedRange: before.brushedRange,
+      };
+      const label = `Applied change set: “${changeSet.title}” (${indexes.length} change${indexes.length === 1 ? "" : "s"})`;
+      // force: the human approved this set in the review card.
+      const meta: ActionMeta = { origin: "agent", label, force: true };
+
+      for (const index of indexes) {
+        const action = changeSet.actions[index]!;
+        const result = runChangeAction(action, meta);
+        if (!result.ok) {
+          set(snapshot);
+          const detail = result.conflict ? result.hint : result.error;
+          return {
+            ok: false,
+            error: `Change set “${changeSet.title}” failed at action ${index} (${action.kind}): ${detail} Nothing was applied.`,
+          };
+        }
+      }
+
+      const now = Date.now();
+      const entryId = genId("cmd");
+      const status =
+        indexes.length === changeSet.actions.length
+          ? ("applied" as const)
+          : ("partially_applied" as const);
+      set((s) => {
+        const changeSets = s.presence.changeSets.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                status,
+                appliedActionIndexes: [...indexes],
+                updatedAt: now,
+              }
+            : item,
+        );
+        const presence: PresenceState = { ...s.presence, changeSets };
+        if (presence.session && presence.session.phase === "review") {
+          presence.session = {
+            ...presence.session,
+            phase: resumedPhase(presence),
+            updatedAt: now,
+          };
+        }
+        return {
+          // Collapse: one undo entry back to the pre-apply document, one
+          // activity line — the review, not its individual commands.
+          undoStack: [
+            ...snapshot.undoStack,
+            { id: entryId, by: "agent" as const, label, at: now, doc: snapshot.doc },
+          ].slice(-MAX_HISTORY),
+          redoStack: [],
+          activityLog: [
+            { id: entryId, by: "agent" as const, label, at: now, undone: false },
+            ...snapshot.activityLog,
+          ].slice(0, MAX_ACTIVITY),
+          presence,
+        };
+      });
+      return { ok: true, changeSetId: id };
+    },
+
+    rejectChangeSet(id: string): ActionResult {
+      const changeSet = get().presence.changeSets.find((c) => c.id === id);
+      if (!changeSet) {
+        return { ok: false, error: `No change set with id "${id}".` };
+      }
+      if (changeSet.status !== "proposed") {
+        return {
+          ok: false,
+          error: `Change set “${changeSet.title}” was already ${changeSet.status}.`,
+        };
+      }
+      const now = Date.now();
+      set(
+        settleChangeSets(
+          get().presence.changeSets.map((item) =>
+            item.id === id
+              ? { ...item, status: "rejected" as const, updatedAt: now }
+              : item,
+          ),
+        ),
+      );
+      logPresence(`Change set rejected: “${changeSet.title}”`, "human");
+      return { ok: true, changeSetId: id };
+    },
+
+    reviseChangeSet(id: string, input: ReviseChangeSetInput): ActionResult {
+      const changeSet = get().presence.changeSets.find((c) => c.id === id);
+      if (!changeSet) {
+        return { ok: false, error: `No change set with id "${id}".` };
+      }
+      if (changeSet.status !== "proposed") {
+        return {
+          ok: false,
+          error: `Change set “${changeSet.title}” was already ${changeSet.status}; propose a new one.`,
+        };
+      }
+      const parsed = reviseChangeSetInput.safeParse({
+        changeSetId: id,
+        ...input,
+      });
+      if (!parsed.success) {
+        return {
+          ok: false,
+          error: `Invalid revision: ${z.prettifyError(parsed.error)}`,
+        };
+      }
+      const actions = parsed.data.actions as ChangeAction[] | undefined;
+      if (actions) {
+        const invalid = checkChangeActions(actions);
+        if (invalid) return { ok: false, error: invalid };
+      }
+      const now = Date.now();
+      set((s) => ({
+        presence: {
+          ...s.presence,
+          changeSets: s.presence.changeSets.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  ...(parsed.data.title !== undefined
+                    ? { title: parsed.data.title }
+                    : {}),
+                  ...(parsed.data.rationale !== undefined
+                    ? { rationale: parsed.data.rationale }
+                    : {}),
+                  ...(actions
+                    ? { actions: actions.map((action) => ({ ...action })) }
+                    : {}),
+                  updatedAt: now,
+                }
+              : item,
           ),
         },
       }));
-      logPresence(`Insight dismissed: “${insight.title}”`);
-      return { ok: true, insightId: id };
+      logPresence(
+        `Change set revised: “${parsed.data.title ?? changeSet.title}”`,
+      );
+      return { ok: true, changeSetId: id };
+    },
+
+    withdrawChangeSet(id: string): ActionResult {
+      const changeSet = get().presence.changeSets.find((c) => c.id === id);
+      if (!changeSet) {
+        return { ok: false, error: `No change set with id "${id}".` };
+      }
+      if (changeSet.status !== "proposed") {
+        return {
+          ok: false,
+          error: `Change set “${changeSet.title}” was already ${changeSet.status}; it cannot be withdrawn.`,
+        };
+      }
+      set(
+        settleChangeSets(
+          get().presence.changeSets.filter((item) => item.id !== id),
+        ),
+      );
+      logPresence(`Change set withdrawn: “${changeSet.title}”`);
+      return { ok: true, changeSetId: id };
+    },
+
+    withdrawDecision(id: string): ActionResult {
+      const presence = get().presence;
+      const decision = presence.decisions.find((item) => item.id === id);
+      if (!decision) {
+        return { ok: false, error: `No decision with id "${id}".` };
+      }
+      if (decision.status !== "pending") {
+        return {
+          ok: false,
+          error: `Decision “${decision.question}” was already ${decision.status}; it cannot be withdrawn.`,
+        };
+      }
+      const now = Date.now();
+      const next: PresenceState = {
+        ...presence,
+        decisions: presence.decisions.filter((item) => item.id !== id),
+      };
+      if (next.session && next.session.phase === "review") {
+        next.session = {
+          ...next.session,
+          phase: resumedPhase(next),
+          updatedAt: now,
+        };
+      }
+      set({ presence: next });
+      logPresence(`Decision withdrawn: “${decision.question}”`);
+      return { ok: true, decisionId: id };
     },
 
     undo(): ActionResult {
@@ -921,6 +1774,10 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
       set({ hoveredTileId: tileId });
     },
 
+    setHoveredField(field: HoveredField | null): void {
+      set({ hoveredField: field ? { ...field } : null });
+    },
+
     clearAgentPulse(tileId: string): void {
       set((s) => {
         if (!(tileId in s.agentPulse)) return s;
@@ -944,6 +1801,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
         selectedTileId: null,
         brushedRange: null,
         hoveredTileId: null,
+        hoveredField: null,
       });
     },
   };

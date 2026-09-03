@@ -12,7 +12,12 @@ import { buildSelectedTileTools } from "./tools";
  * selected — the tools unregister on deselect via component unmount
  * (spec-leverage demo). Render once next to <WebMCPTools/>.
  */
-export function SelectedTileTools({ dataSource, store, onError }: WebMCPToolsProps) {
+export function SelectedTileTools({
+  dataSource,
+  store,
+  onError,
+  onStatusChange,
+}: WebMCPToolsProps) {
   const selected = useDashboardStore((s) =>
     s.doc.tiles.find((t) => t.id === s.selectedTileId),
   );
@@ -23,6 +28,7 @@ export function SelectedTileTools({ dataSource, store, onError }: WebMCPToolsPro
       dataSource={dataSource}
       {...(store ? { store } : {})}
       {...(onError ? { onError } : {})}
+      {...(onStatusChange ? { onStatusChange } : {})}
       tileType={selected.type}
       tileTitle={selected.title}
     />
@@ -33,6 +39,7 @@ function SelectedTileToolsInner({
   dataSource,
   store,
   onError,
+  onStatusChange,
   tileType,
   tileTitle,
 }: WebMCPToolsProps & { tileType: string; tileTitle: string }) {
@@ -51,6 +58,7 @@ function SelectedTileToolsInner({
           key={def.name}
           def={def}
           {...(onError ? { onError } : {})}
+          {...(onStatusChange ? { onStatusChange } : {})}
         />
       ))}
     </>

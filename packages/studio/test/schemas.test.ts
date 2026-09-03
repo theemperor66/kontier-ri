@@ -82,6 +82,24 @@ const cases: Record<string, [z.ZodType, Record<string, unknown>]> = {
   ],
   remove_view: [schemas.removeViewInput, { name: "view_mrr" }],
   export_tile_data: [schemas.exportTileDataInput, { tileId: "t1" }],
+  // Collaboration protocol
+  get_work_context: [schemas.getWorkContextInput, {}],
+  request_decision: [
+    schemas.requestDecisionInput,
+    {
+      question: "Which cohort should lead?",
+      context: "Both cohorts moved, but only one can anchor the summary.",
+      options: [
+        { id: "enterprise", label: "Enterprise" },
+        { id: "self_serve", label: "Self-serve" },
+      ],
+      recommendedOptionId: "enterprise",
+    },
+  ],
+  complete_work: [
+    schemas.completeWorkInput,
+    { summary: "Investigation complete.", outcomes: ["Pinned the anomaly."] },
+  ],
 };
 
 describe("tool input schemas are strict", () => {
@@ -225,11 +243,26 @@ describe("JSON Schema generation", () => {
   ];
 
   it("every tool schema converts via z.toJSONSchema to a strict object", () => {
-    expect(defs).toHaveLength(39);
+    expect(defs).toHaveLength(43);
     for (const def of defs) {
       const js = z.toJSONSchema(def.inputSchema) as Record<string, unknown>;
       expect(js["type"], def.name).toBe("object");
       expect(js["additionalProperties"], def.name).toBe(false);
+    }
+  });
+
+  it("phase-scoped bundle schemas convert to strict objects too", () => {
+    const phaseScoped = {
+      propose_change_set: schemas.proposeChangeSetInput,
+      apply_change_set: schemas.applyChangeSetInput,
+      revise_change_set: schemas.reviseChangeSetInput,
+      withdraw_change_set: schemas.withdrawChangeSetInput,
+      withdraw_decision: schemas.withdrawDecisionInput,
+    };
+    for (const [name, schema] of Object.entries(phaseScoped)) {
+      const js = z.toJSONSchema(schema) as Record<string, unknown>;
+      expect(js["type"], name).toBe("object");
+      expect(js["additionalProperties"], name).toBe(false);
     }
   });
 });
