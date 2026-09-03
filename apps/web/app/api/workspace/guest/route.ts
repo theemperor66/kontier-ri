@@ -14,7 +14,10 @@
 import { errorResponse, jsonResponse } from "@/lib/server/http";
 import { createGuestWorkspace } from "@/lib/server/guests";
 
-export const dynamic = process.env.NEXT_OUTPUT === "export" ? "error" : "force-dynamic";
+// Must be a static literal: Next cannot read a computed `dynamic`
+// field, and a ternary here failed the whole build. The static
+// export simply omits app/api (see scripts/export-build.mjs).
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
   let label = "";

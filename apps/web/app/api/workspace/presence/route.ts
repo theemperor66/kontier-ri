@@ -19,7 +19,10 @@ import { presenceSchema } from "@/lib/server/schemas";
 // data), so the export build gets `"error"` instead: nothing is prerendered,
 // no file is emitted, and the path 404s on GitHub Pages. See the note at the
 // top of lib/server/http.ts.
-export const dynamic = process.env.NEXT_OUTPUT === "export" ? "error" : "force-dynamic";
+// Must be a static literal: Next cannot read a computed `dynamic`
+// field, and a ternary here failed the whole build. The static
+// export simply omits app/api (see scripts/export-build.mjs).
+export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
   const body = await readJson(request, presenceSchema);

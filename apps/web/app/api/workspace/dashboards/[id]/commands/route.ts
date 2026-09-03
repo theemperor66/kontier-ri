@@ -23,16 +23,10 @@ import { postCommandsSchema } from "@/lib/server/schemas";
 // data), so the export build gets `"error"` instead: nothing is prerendered,
 // no file is emitted, and the path 404s on GitHub Pages. See the note at the
 // top of lib/server/http.ts.
-export const dynamic = process.env.NEXT_OUTPUT === "export" ? "error" : "force-dynamic";
-
-/**
- * `output: export` refuses a dynamic segment without `generateStaticParams`.
- * There is nothing to pre-render here, so the export contains zero instances
- * of this route; on a server, `dynamic = "force-dynamic"` ignores this.
- */
-export function generateStaticParams(): Array<{ id: string }> {
-  return [];
-}
+// Must be a static literal: Next cannot read a computed `dynamic`
+// field, and a ternary here failed the whole build. The static
+// export simply omits app/api (see scripts/export-build.mjs).
+export const dynamic = "force-dynamic";
 
 export async function GET(
   request: Request,

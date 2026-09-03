@@ -471,7 +471,9 @@ describe("collaboration tools", () => {
     expect(result.workingAgreement).toEqual({
       agentEdits: expect.stringContaining("attributed and undoable"),
       recentHumanEdits: expect.stringContaining("last 10 minutes"),
-      rawData: expect.stringContaining("stays local"),
+      // The working agreement tells the agent it is not alone on this
+      // report, and that the server — not its own clock — orders changes.
+      sharedWorkspace: expect.stringContaining("same report"),
       uncertainOrHighImpactChanges: expect.stringContaining(
         "request_decision or propose_insight",
       ),

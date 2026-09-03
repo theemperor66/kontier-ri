@@ -1308,7 +1308,9 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
             agentEdits: "Agent dashboard edits are attributed and undoable.",
             recentHumanEdits:
               "Human edits from the last 10 minutes are protected from silent overwrite.",
-            rawData: "Raw data stays local in the browser.",
+            sharedWorkspace:
+              "Other people and agents may be working this same report. " +
+              "The server assigns the order of every change.",
             uncertainOrHighImpactChanges:
               "Use request_decision or propose_insight before applying uncertain or high-impact changes.",
           },
