@@ -50,6 +50,15 @@ export const postCommandsSchema = z.strictObject({
   entries: z.array(commandEntrySchema).min(1).max(200),
 });
 
+/**
+ * Collaboration state. `state` is any JSON value on purpose — see the route
+ * header. The 1 MB ceiling exists because this is the one body a client can
+ * grow without bound.
+ */
+export const putSessionSchema = z.strictObject({
+  state: z.unknown(),
+});
+
 export const presenceSchema = z.strictObject({
   actor: z.string().trim().min(1).max(120),
   label: z.string().trim().min(1).max(120),

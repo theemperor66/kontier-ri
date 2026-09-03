@@ -13,6 +13,7 @@ export type {
   InvestigationDecision,
   InvestigationRecord,
   PresencePeer,
+  SessionRecord,
   VersionRecord,
   VersionSummary,
   WorkspaceIdentity,

@@ -24,6 +24,7 @@ import type {
   DashboardSummary,
   InvestigationRecord,
   PresencePeer,
+  SessionRecord,
   VersionRecord,
   VersionSummary,
 } from "../src/types";
@@ -107,6 +108,7 @@ function toVersionSummary(record: VersionRecord): VersionSummary {
 export function createMockWorkspaceServer(): MockWorkspaceServer {
   const dashboards = new Map<string, DashboardRecord>();
   const versions = new Map<string, VersionRecord[]>();
+  const sessions = new Map<string, SessionRecord>();
   const commands = new Map<string, { cursor: number; entries: CommandEntry[] }>();
   const peers = new Map<string, PresencePeer>();
   let investigations: InvestigationRecord[] = [];
@@ -223,6 +225,25 @@ export function createMockWorkspaceServer(): MockWorkspaceServer {
           if (!dashboards.has(id)) return errorResponse(404, `Unknown dashboard ${id}`, "not_found");
           dropDashboard(id);
           return noContent();
+        }
+      }
+
+      if (segments[2] === "session" && segments.length === 3) {
+        if (method === "GET") {
+          const record = sessions.get(id);
+          return record
+            ? json({ session: record })
+            : errorResponse(404, `No session for ${id}`, "not_found");
+        }
+        if (method === "PUT") {
+          server.now += 1;
+          const record: SessionRecord = {
+            dashboardId: id,
+            state: (body as { state: unknown }).state,
+            updatedAt: server.now,
+          };
+          sessions.set(id, record);
+          return json({ session: record });
         }
       }
 

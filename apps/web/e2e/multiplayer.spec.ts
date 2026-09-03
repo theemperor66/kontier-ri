@@ -31,7 +31,8 @@ async function createWorkspace(page: Page, baseURL: string): Promise<string> {
   const response = await page.request.post(`${baseURL}/api/workspace/guest`, {
     data: { label: "Two-browser test" },
   });
-  expect(response.status()).toBe(201);
+  // The body is in the message so a refusal explains itself immediately.
+  expect(response.status(), await response.text()).toBe(201);
   return (await response.json()).token as string;
 }
 

@@ -41,6 +41,7 @@ import type {
   DashboardSummary,
   InvestigationRecord,
   PresencePeer,
+  SessionRecord,
   VersionRecord,
   VersionSummary,
   WorkspaceIdentity,
@@ -284,6 +285,33 @@ export class HttpWorkspaceStore implements WorkspaceStore {
   }
 
   // -- investigations ------------------------------------------------------
+
+  // -- collaboration session ------------------------------------------------
+
+  async readSession(dashboardId: string): Promise<SessionRecord | null> {
+    const payload = await this.request<unknown>(
+      "GET",
+      `/dashboards/${encodeURIComponent(dashboardId)}/session`,
+      { nullOn404: true },
+    );
+    return unwrap<SessionRecord>(payload, "session");
+  }
+
+  async writeSession(dashboardId: string, state: unknown): Promise<SessionRecord> {
+    const payload = await this.requireJson<unknown>(
+      "PUT",
+      `/dashboards/${encodeURIComponent(dashboardId)}/session`,
+      { body: { state } },
+    );
+    const record = unwrap<SessionRecord>(payload, "session");
+    if (!record) {
+      throw new WorkspaceError("The workspace service returned no session record.", {
+        status: 0,
+        url: `${this.baseUrl}/dashboards/${encodeURIComponent(dashboardId)}/session`,
+      });
+    }
+    return record;
+  }
 
   async listInvestigations(): Promise<InvestigationRecord[]> {
     const payload = await this.request<unknown>("GET", "/investigations");

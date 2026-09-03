@@ -24,6 +24,7 @@ import type {
   DashboardSummary,
   InvestigationRecord,
   PresencePeer,
+  SessionRecord,
   VersionRecord,
   VersionSummary,
   WorkspaceIdentity,
@@ -256,6 +257,25 @@ export class LocalWorkspaceStore implements WorkspaceStore {
   }
 
   // -- investigations ------------------------------------------------------
+
+  // -- collaboration session ------------------------------------------------
+
+  async readSession(dashboardId: string): Promise<SessionRecord | null> {
+    const stored = this.read<SessionRecord | null>(`session:${dashboardId}`, null);
+    if (!stored || typeof stored !== "object") return null;
+    return stored;
+  }
+
+  async writeSession(dashboardId: string, state: unknown): Promise<SessionRecord> {
+    this.lastStamp = Math.max(this.now(), this.lastStamp + 1);
+    const record: SessionRecord = {
+      dashboardId,
+      state,
+      updatedAt: this.lastStamp,
+    };
+    this.write(`session:${dashboardId}`, record);
+    return record;
+  }
 
   async listInvestigations(): Promise<InvestigationRecord[]> {
     return this.readInvestigations();

@@ -772,5 +772,7 @@ export interface DashboardStore {
    * Replace the whole document + reset history (load/import/tests).
    * Runs migrateDoc: v1 docs (flat tiles[]) become one "Overview" page.
    */
+  /** Replace collaboration state with a peer's published copy. */
+  adoptPresence(next: PresenceState): void;
   resetDashboard(doc?: DashboardDocInput): void;
 }

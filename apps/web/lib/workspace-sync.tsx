@@ -29,6 +29,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { PresenceState } from "@kontier-ri/studio";
 import type { PresencePeer, WorkspaceStore } from "@kontier-ri/workspace";
 import { useDashboardStore } from "@/lib/dashboard-store";
 import {
@@ -51,6 +52,15 @@ import {
 export const SYNC_POLL_MS = 2_000;
 /** How often it says "still here". The server prunes silent peers. */
 export const HEARTBEAT_MS = 10_000;
+
+/** JSON that never throws on a cyclic or exotic value. */
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 export type ConnectionState = "signed-out" | "connecting" | "live" | "error";
 
@@ -101,8 +111,42 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
    * for every write, so it is the honest trigger.
    */
   const seenUpdatedAt = useRef(0);
+  /** Same idea for the shared collaboration state (proposals, decisions). */
+  const seenSessionAt = useRef(0);
+  /**
+   * The exact document and collaboration state this tab last exchanged with
+   * the server, serialized.
+   *
+   * Object identity is not enough. Adopting a peer's state creates new
+   * objects, which the store subscription cannot tell apart from the user
+   * typing — so each tab would publish what it just received, the other would
+   * adopt and publish it back, and the two would ping-pong forever, saving on
+   * every tick. Comparing content stops the echo at the source.
+   */
+  const syncedDocJson = useRef("");
+  const syncedPresenceJson = useRef("");
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
+
+  /**
+   * Load a document into the store WITHOUT destroying the collaboration
+   * state.
+   *
+   * resetDashboard clears presence, which is right when a human opens a
+   * different report and wrong here: a pending proposal belongs to the
+   * workspace, not to the document version that happened to be on screen.
+   * Refreshing the report — even from this tab's own save, which races its
+   * own poll — was silently deleting change sets a reviewer had not seen yet.
+   */
+  const applyServerDoc = useCallback((doc: unknown, updatedAt: number) => {
+    const store = useDashboardStore.getState();
+    const keptPresence = store.presence;
+    flushPersist();
+    store.resetDashboard(doc as never);
+    useDashboardStore.getState().adoptPresence(keptPresence);
+    seenUpdatedAt.current = Math.max(seenUpdatedAt.current, updatedAt);
+    syncedDocJson.current = safeJson(useDashboardStore.getState().doc);
+  }, []);
 
   /**
    * Make sure this tab is on the workspace's report rather than its own.
@@ -121,14 +165,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       }
       const record = await activeStore.loadDashboard(newest.id);
       if (!record) return null;
-      flushPersist();
       saveDashboardDoc(newest.id, record.doc as never);
       setCurrentDashboard(newest.id);
-      useDashboardStore.getState().resetDashboard(record.doc as never);
-      seenUpdatedAt.current = record.updatedAt;
+      applyServerDoc(record.doc, record.updatedAt);
       return newest.id;
     },
-    [],
+    [applyServerDoc],
   );
 
   /** Adopt the server's document for the dashboard this tab is showing. */
@@ -136,13 +178,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     async (activeStore: WorkspaceStore, dashboardId: string) => {
       const record = await activeStore.loadDashboard(dashboardId);
       if (!record) return;
-      // Do not clobber unsaved local edits silently: flush them first, so the
-      // server has seen this tab's work before the tab adopts someone else's.
-      flushPersist();
-      useDashboardStore.getState().resetDashboard(record.doc as never);
-      seenUpdatedAt.current = record.updatedAt;
+      applyServerDoc(record.doc, record.updatedAt);
     },
-    [],
+    [applyServerDoc],
   );
 
   // Sign in / out transitions.
@@ -212,6 +250,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         }
         if (stopped) return;
         if (page.cursor !== cursorRef.current) setCursor(page.cursor);
+
+        // Pending proposals, decisions and the plan travel separately from
+        // the document, because a proposal is not part of the report. This
+        // is what lets a DIFFERENT human review what an agent proposed.
+        const shared = await store.readSession(dashboardId);
+        if (shared && shared.updatedAt > seenSessionAt.current) {
+          seenSessionAt.current = shared.updatedAt;
+          useDashboardStore
+            .getState()
+            .adoptPresence(shared.state as PresenceState);
+          syncedPresenceJson.current = safeJson(
+            useDashboardStore.getState().presence,
+          );
+        }
+        if (stopped) return;
         setError(null);
       } catch (err) {
         if (stopped) return;
@@ -242,6 +295,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     let lastDoc = useDashboardStore.getState().doc;
+    let lastPresence = useDashboardStore.getState().presence;
     let inFlight = false;
 
     const push = async () => {
@@ -252,6 +306,27 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       inFlight = true;
       try {
         const snapshot = useDashboardStore.getState();
+
+        // Never broadcast an empty report. A tab that has just joined holds a
+        // blank document for a moment, and publishing it made that blankness
+        // the newest thing in the workspace — so the joiner kept selecting
+        // its own emptiness and could overwrite the report it came to read.
+        // There is nothing to share until there is something in it.
+        const hasContent =
+          snapshot.doc.pages.length > 1 ||
+          snapshot.doc.pages.some((page) => page.tiles.length > 0);
+        if (!hasContent) return;
+
+        const docJson = safeJson(snapshot.doc);
+        const presenceJson = safeJson(snapshot.presence);
+        // Nothing of ours changed: stay quiet rather than restamp the record
+        // and wake every other tab up for no reason.
+        if (
+          docJson === syncedDocJson.current &&
+          presenceJson === syncedPresenceJson.current
+        ) {
+          return;
+        }
         const saved = await store.saveDashboard({
           id: dashboardId,
           name: snapshot.doc.title,
@@ -261,6 +336,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         // Remember our own stamp, or the next poll would treat this tab's
         // own write as a peer's and reload the report under the user.
         seenUpdatedAt.current = Math.max(seenUpdatedAt.current, saved.updatedAt);
+        syncedDocJson.current = docJson;
+
+        // Publish proposals, decisions and the plan so another human can act
+        // on them. Same echo guard: our own write must not read back as a
+        // peer's and re-adopt under us.
+        const publishedSession = await store.writeSession(
+          dashboardId,
+          snapshot.presence,
+        );
+        seenSessionAt.current = Math.max(
+          seenSessionAt.current,
+          publishedSession.updatedAt,
+        );
+        syncedPresenceJson.current = presenceJson;
+
         const fresh = snapshot.activityLog.filter(
           (entry) => !pushed.has(entry.id),
         );
@@ -285,8 +375,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
 
     const unsubscribe = useDashboardStore.subscribe((snapshot) => {
-      if (snapshot.doc === lastDoc) return;
+      const docChanged = snapshot.doc !== lastDoc;
+      const presenceChanged = snapshot.presence !== lastPresence;
+      if (!docChanged && !presenceChanged) return;
       lastDoc = snapshot.doc;
+      lastPresence = snapshot.presence;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => void push(), 600);
     });

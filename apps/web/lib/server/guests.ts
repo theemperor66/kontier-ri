@@ -27,9 +27,26 @@ import { workspaceDataDir } from "./workspace-store";
 export const MAX_GUEST_WORKSPACES = 500;
 /** A guest workspace outlives a judging window and not much more. */
 export const GUEST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
-/** Creations allowed per rolling window, per process. */
-export const GUEST_CREATE_LIMIT = 30;
+/**
+ * Creations allowed per rolling window, per process.
+ *
+ * The real protection against abuse is MAX_GUEST_WORKSPACES plus the TTL:
+ * this window only smooths bursts. It was set at 30/hour, which a public demo
+ * reaches on a normal afternoon — several visitors, a few retries and an
+ * end-to-end suite that opens a fresh workspace per test all draw on the same
+ * per-process budget. A rate limit that fires during ordinary use is not a
+ * safety measure, it is an outage, so the default is generous and the value
+ * is configurable for a deployment that wants it tighter.
+ */
+export const GUEST_CREATE_LIMIT = readLimit("KONTIER_GUEST_CREATE_LIMIT", 300);
 export const GUEST_CREATE_WINDOW_MS = 60 * 60 * 1000;
+
+function readLimit(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 interface GuestEntry {
   /** sha256 of the token, hex. The token itself is never stored. */

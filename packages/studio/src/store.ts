@@ -1787,6 +1787,21 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => {
       });
     },
 
+    /**
+     * Adopt collaboration state published by another participant.
+     *
+     * Deliberately not a merge. Two tabs holding different opinions about
+     * which proposals are still pending is worse than one of them being a
+     * few seconds behind — a merge could resurrect a change set the other
+     * person just approved, and ask them to approve it twice.
+     *
+     * It touches presence only: the document, history and attribution have
+     * their own path and must not be disturbed by a proposal arriving.
+     */
+    adoptPresence(next: PresenceState): void {
+      set({ presence: next });
+    },
+
     resetDashboard(doc?: DashboardDocInput): void {
       set({
         doc: doc ? migrateDoc(doc) : createInitialDoc(),

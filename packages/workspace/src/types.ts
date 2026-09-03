@@ -23,6 +23,18 @@ export interface WorkspaceIdentity {
   kind: "local" | "remote";
 }
 
+/**
+ * Shared collaboration state for one dashboard. `state` is deliberately
+ * opaque: its shape belongs to the studio package and keeps changing, and a
+ * server that pinned it would reject next week's proposals.
+ */
+export interface SessionRecord {
+  dashboardId: string;
+  state: unknown;
+  /** Epoch ms, assigned by the store. */
+  updatedAt: number;
+}
+
 /** Index row for the dashboard picker: enough to render without loading docs. */
 export interface DashboardSummary {
   id: string;
@@ -184,6 +196,20 @@ export interface WorkspaceStore {
   loadVersion(dashboardId: string, versionId: string): Promise<VersionRecord | null>;
   /** Remove one snapshot; idempotent. */
   deleteVersion(dashboardId: string, versionId: string): Promise<void>;
+
+  /**
+   * The collaboration state for one dashboard: work session, plan, decisions,
+   * insights and pending change sets, as one opaque blob.
+   *
+   * It is separate from the document on purpose. A pending agent proposal is
+   * not part of the report and must not be undoable with the report, or land
+   * in a version snapshot — but a second person cannot review a proposal they
+   * cannot see, so it still has to travel. Returns null when nothing has been
+   * shared for this dashboard yet.
+   */
+  readSession(dashboardId: string): Promise<SessionRecord | null>;
+  /** Publish this tab's collaboration state; the store stamps updatedAt. */
+  writeSession(dashboardId: string, state: unknown): Promise<SessionRecord>;
 
   /** Completed investigations, newest first. */
   listInvestigations(): Promise<InvestigationRecord[]>;

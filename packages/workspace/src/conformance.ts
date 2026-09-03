@@ -133,6 +133,47 @@ export function describeWorkspaceStoreContract(name: string, makeStore: Workspac
       expect(loaded?.name).toBe(record.name);
     });
 
+    // -- collaboration session ---------------------------------------------
+
+    it("has no session for a dashboard nobody has shared yet", async () => {
+      expect(await store.readSession("dash_1")).toBeNull();
+    });
+
+    it("round-trips an opaque collaboration state", async () => {
+      // The shape belongs to the studio package; the store must not care.
+      const state = {
+        session: { brief: "Explain the March churn spike" },
+        changeSets: [{ id: "cs_1", status: "pending", actions: [{ kind: "add_tile" }] }],
+        decisions: [],
+      };
+      const written = await store.writeSession("dash_1", state);
+      expect(written.dashboardId).toBe("dash_1");
+      expect(written.updatedAt).toBeGreaterThan(0);
+      const read = await store.readSession("dash_1");
+      expect(read?.state).toEqual(state);
+    });
+
+    it("replaces the state instead of merging it", async () => {
+      await store.writeSession("dash_1", { changeSets: [{ id: "cs_1" }] });
+      await store.writeSession("dash_1", { changeSets: [] });
+      const read = await store.readSession("dash_1");
+      // An approved-and-cleared proposal must not come back from the dead.
+      expect(read?.state).toEqual({ changeSets: [] });
+    });
+
+    it("keeps each dashboard's session separate", async () => {
+      await store.writeSession("dash_1", { marker: "one" });
+      await store.writeSession("dash_2", { marker: "two" });
+      expect((await store.readSession("dash_1"))?.state).toEqual({ marker: "one" });
+      expect((await store.readSession("dash_2"))?.state).toEqual({ marker: "two" });
+    });
+
+    it("moves updatedAt forward on every write, so a peer can detect it", async () => {
+      const first = await store.writeSession("dash_1", { n: 1 });
+      const second = await store.writeSession("dash_1", { n: 2 });
+      expect(second.updatedAt).toBeGreaterThan(first.updatedAt);
+    });
+
     it("lists dashboards newest first, by SAVE time not the caller's clock", async () => {
       // The store stamps updatedAt. A shared workspace has several clients
       // with several clocks, so letting a caller claim a timestamp would let

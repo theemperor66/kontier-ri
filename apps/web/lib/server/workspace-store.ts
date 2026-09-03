@@ -139,6 +139,12 @@ interface WorkspaceFile {
   /** oldest first */
   investigations: InvestigationRecord[];
   presence: PresencePeer[];
+  /**
+   * dashboard id -> shared collaboration state (work session, plan,
+   * decisions, pending change sets). Opaque here on purpose: its shape is
+   * the studio package's business and keeps changing.
+   */
+  sessions: Record<string, { state: unknown; updatedAt: number }>;
 }
 
 function emptyFile(): WorkspaceFile {
@@ -149,6 +155,7 @@ function emptyFile(): WorkspaceFile {
     commands: {},
     investigations: [],
     presence: [],
+    sessions: {},
   };
 }
 
@@ -265,6 +272,12 @@ function normalizeFile(parsed: unknown): WorkspaceFile {
     presence: Array.isArray(parsed.presence)
       ? (parsed.presence as PresencePeer[])
       : base.presence,
+    // Any field added to WorkspaceFile MUST be listed here. This function
+    // rebuilds the file from an allow-list, so an unlisted field is written
+    // successfully and then silently dropped by the very next read.
+    sessions: isRecord(parsed.sessions)
+      ? (parsed.sessions as Record<string, { state: unknown; updatedAt: number }>)
+      : base.sessions,
   };
 }
 
@@ -393,6 +406,16 @@ export interface WorkspaceStore {
   listInvestigations(): Promise<InvestigationRecord[]>;
   saveInvestigation(record: InvestigationRecord): Promise<void>;
 
+  /** Shared collaboration state for one dashboard, or null when unshared. */
+  readSession(
+    dashboardId: string,
+  ): Promise<{ dashboardId: string; state: unknown; updatedAt: number } | null>;
+  /** Replaces the state wholesale and stamps updatedAt. */
+  writeSession(
+    dashboardId: string,
+    state: unknown,
+  ): Promise<{ dashboardId: string; state: unknown; updatedAt: number }>;
+
   /** Appends in the given order and returns the new cursor (last `seq`). */
   appendCommands(dashboardId: string, entries: CommandInput[]): Promise<number>;
   readCommands(
@@ -501,6 +524,26 @@ export function openWorkspace(workspaceId: string): WorkspaceStore {
         if (next.length === versions.length) return false;
         file.versions[dashboardId] = next;
         return true;
+      });
+    },
+
+    readSession(dashboardId) {
+      return read(id, (file) => {
+        const stored = file.sessions[dashboardId];
+        return stored
+          ? { dashboardId, state: stored.state, updatedAt: stored.updatedAt }
+          : null;
+      });
+    },
+
+    writeSession(dashboardId, state) {
+      return mutate(id, (file) => {
+        const sessions = file.sessions;
+        // Replace, never merge: an approved-and-cleared proposal must not
+        // come back from the dead because an older tab still had it.
+        const record = { state, updatedAt: Date.now() };
+        file.sessions = { ...sessions, [dashboardId]: record };
+        return { dashboardId, state, updatedAt: record.updatedAt };
       });
     },
 
