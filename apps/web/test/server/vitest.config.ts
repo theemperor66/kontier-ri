@@ -28,7 +28,6 @@ export default defineConfig({
     // Vitest 4 removed test.poolOptions; the equivalents are top-level.
     pool: "threads",
     maxWorkers: 1,
-    minWorkers: 1,
     fileParallelism: false,
   },
 });

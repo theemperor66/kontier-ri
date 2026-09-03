@@ -50,6 +50,10 @@ export type ErrorCode =
   | "unauthorized"
   | "invalid_request"
   | "not_found"
+  // Guest workspace creation is the one unauthenticated, disk-allocating
+  // route, so it needs to be able to refuse for reasons of its own.
+  | "rate_limited"
+  | "at_capacity"
   | "internal_error";
 
 /** Every non-2xx body carries this envelope (plus, for a missing item, the

@@ -19,6 +19,7 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
+import { areGuestWorkspacesEnabled, findGuestWorkspace } from "./guests";
 
 /** The authenticated caller: one token, one workspace. */
 export interface WorkspacePrincipal {
@@ -26,6 +27,13 @@ export interface WorkspacePrincipal {
   workspaceId: string;
   /** Human-readable name of the token holder, safe to show and to log. */
   label: string;
+  /**
+   * How the caller got in. A tenant token is provisioned in the environment;
+   * a guest holds a link that created its own workspace. The store treats
+   * both identically — the distinction exists so the UI can be honest about
+   * which one the visitor is.
+   */
+  kind: "tenant" | "guest";
 }
 
 export type AuthFailureReason = "not_configured" | "unauthorized";
@@ -96,8 +104,14 @@ function tokenTable(): TokenEntry[] | null {
   return entries;
 }
 
-/** True when this deployment runs the workspace API at all. */
+/**
+ * True when this deployment runs the workspace API at all.
+ *
+ * Guest workspaces are enough on their own: the public demo serves guests and
+ * configures no tenant tokens, and that deployment is fully functional.
+ */
 export function isWorkspaceApiConfigured(): boolean {
+  if (areGuestWorkspacesEnabled()) return true;
   const table = tokenTable();
   return table !== null && table.length > 0;
 }
@@ -122,7 +136,8 @@ function matches(entry: TokenEntry, digest: Buffer): boolean {
  */
 export function authenticate(request: Request): AuthResult {
   const table = tokenTable();
-  if (table === null || table.length === 0) {
+  const guestsOn = areGuestWorkspacesEnabled();
+  if ((table === null || table.length === 0) && !guestsOn) {
     return {
       ok: false,
       reason: "not_configured",
@@ -138,13 +153,25 @@ export function authenticate(request: Request): AuthResult {
   // Constant-time comparison against every entry (the table is tiny), so the
   // response time does not reveal which prefix of a guess was correct.
   let found: TokenEntry | null = null;
-  for (const entry of table) {
+  for (const entry of table ?? []) {
     if (matches(entry, digest)) found = entry;
   }
-  if (found === null) {
-    return { ok: false, reason: "unauthorized", status: 401, message: UNAUTHORIZED_MESSAGE };
+  if (found !== null) {
+    return {
+      ok: true,
+      principal: { workspaceId: found.workspaceId, label: found.label, kind: "tenant" },
+    };
   }
-  return { ok: true, principal: { workspaceId: found.workspaceId, label: found.label } };
+  // Then the guest registry: a link-holder is a first-class principal, scoped
+  // to the one workspace their link created.
+  const guest = findGuestWorkspace(token);
+  if (guest !== null) {
+    return {
+      ok: true,
+      principal: { workspaceId: guest.workspaceId, label: guest.label, kind: "guest" },
+    };
+  }
+  return { ok: false, reason: "unauthorized", status: 401, message: UNAUTHORIZED_MESSAGE };
 }
 
 /** Test helper: drop the parsed-table cache. */
