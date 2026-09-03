@@ -11,7 +11,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { chartContextMenu, markOpacity, type BaseChartProps } from "./common";
+import {
+  AXIS_TICK,
+  chartContextMenu,
+  GRID_INK,
+  markOpacity,
+  type BaseChartProps,
+} from "./common";
 import { chartTooltip } from "./chart-tooltip";
 
 /** 100%-stacked bars: each x bucket normalized to fractions of its total. */
@@ -66,11 +72,20 @@ export function Stacked100ChartView({
         onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
         className={onItemClick ? "cursor-crosshair" : undefined}
       >
-        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey={xKey} tickLine={false} axisLine={false} minTickGap={24} />
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={GRID_INK} />
+        <XAxis
+          dataKey={xKey}
+          tickLine={false}
+          axisLine={false}
+          minTickGap={24}
+          tick={AXIS_TICK}
+          stroke={GRID_INK}
+        />
         <YAxis
           tickLine={false}
           axisLine={false}
+          tick={AXIS_TICK}
+          stroke={GRID_INK}
           width={48}
           domain={[0, 1]}
           ticks={[0, 0.25, 0.5, 0.75, 1]}

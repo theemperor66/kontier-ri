@@ -13,15 +13,11 @@ import {
   ChartScatter,
   Check,
   CopySimple,
-  DotsSixVertical,
   Funnel,
-  Gauge,
   GridNine,
   Note,
   PencilSimple,
-  Sparkle,
   StackSimple,
-  Table,
   X,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
@@ -40,16 +36,19 @@ import {
 } from "@/lib/sql";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { KpiTile } from "@/components/tiles/kpi-tile";
+import { KpiTile, tintClass } from "@/components/tiles/kpi-tile";
+import { TileProposalStrip } from "@/components/presence/tile-proposal";
 import { ChartTile } from "@/components/tiles/chart-tile";
 import { TableTile } from "@/components/tiles/table-tile";
 import { MarkdownTile } from "@/components/tiles/markdown-tile";
+import { tileSpecTitle, tileSubline } from "@/components/tiles/tile-subline";
 
-const TYPE_ICON: Record<TileType, React.ComponentType<{ className?: string }>> = {
-  kpi: Gauge,
-  chart: ChartBar,
-  table: Table,
-  markdown: Note,
+/** Body padding per tile type (design: tables bleed to the card edges). */
+const BODY_PADDING: Record<TileType, string> = {
+  kpi: "px-4 pb-3.5 pt-0",
+  chart: "px-3 pb-3 pt-1",
+  table: "px-0 pb-2 pt-1",
+  markdown: "px-4 pb-3.5 pt-1",
 };
 
 // ---------------------------------------------------------------------------
@@ -142,7 +141,7 @@ function ChartTypeSwitcher({ tile }: { tile: Tile }) {
         size="icon-sm"
         aria-label={`Change chart type of ${tile.title}`}
         aria-expanded={open}
-        className="text-muted-foreground"
+        className="rounded-lg text-faint hover:bg-surface-2 hover:text-foreground"
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
@@ -164,7 +163,7 @@ function ChartTypeSwitcher({ tile }: { tile: Tile }) {
               ref={menuRef}
               role="menu"
               aria-label="Chart type"
-              className="fixed z-50 flex min-w-36 flex-col rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg"
+              className="fixed z-50 flex min-w-36 flex-col rounded-[10px] border border-line bg-popover p-1 text-popover-foreground shadow-card"
               style={{ top: anchor.top, right: anchor.right }}
               onPointerDown={(e) => e.stopPropagation()}
             >
@@ -179,10 +178,10 @@ function ChartTypeSwitcher({ tile }: { tile: Tile }) {
                 type="button"
                 role="menuitem"
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs",
+                  "flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px]",
                   active
-                    ? "bg-accent text-accent-foreground"
-                    : "text-foreground hover:bg-muted",
+                    ? "bg-accent-soft text-accent-strong"
+                    : "text-foreground hover:bg-surface-2",
                 )}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -242,7 +241,7 @@ function GranularitySelect({ tile }: { tile: Tile }) {
     <select
       value={grain}
       aria-label={`Time granularity of ${tile.title}`}
-      className="h-6 cursor-pointer rounded-md border border-transparent bg-transparent pr-0.5 text-[10px] font-medium text-muted-foreground outline-none transition-colors hover:border-border hover:text-foreground focus-visible:border-ring"
+      className="h-6 cursor-pointer rounded-lg border border-transparent bg-transparent px-1 text-[12px] font-medium text-faint outline-none transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:border-accent-mid"
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => {
@@ -308,6 +307,8 @@ export interface TileFrameProps {
   dragging: boolean;
   onDragHandleDown: (e: React.PointerEvent) => void;
   onResizeHandleDown: (e: React.PointerEvent) => void;
+  /** Mobile review mode keeps tile actions but disables spatial editing. */
+  layoutInteractive?: boolean;
 }
 
 export const TileFrame = memo(function TileFrame({
@@ -315,6 +316,7 @@ export const TileFrame = memo(function TileFrame({
   dragging,
   onDragHandleDown,
   onResizeHandleDown,
+  layoutInteractive = true,
 }: TileFrameProps) {
   const selected = useDashboardStore((s) => s.selectedTileId === tile.id);
   const pulseAt = useDashboardStore((s) => s.agentPulse[tile.id]);
@@ -326,9 +328,14 @@ export const TileFrame = memo(function TileFrame({
   const undo = useDashboardStore((s) => s.undo);
   const clearAgentPulse = useDashboardStore((s) => s.clearAgentPulse);
   const pulsing = useRecentPulse(pulseAt);
-  const Icon = TYPE_ICON[tile.type];
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(tile.title);
+  const isKpi = tile.type === "kpi";
+  // Position within the page's KPI band drives the design's field sequence.
+  const kpiPosition = useDashboardStore((s) =>
+    s.doc.tiles.filter((t) => t.type === "kpi").findIndex((t) => t.id === tile.id),
+  );
+  const subline = tileSubline(tile);
 
   // Acknowledge the glow once it finishes so the next agent edit re-triggers.
   useEffect(() => {
@@ -381,10 +388,20 @@ export const TileFrame = memo(function TileFrame({
       data-testid={`tile-${tile.id}`}
       data-tile-type={tile.type}
       className={cn(
-        "tile-enter group/tile relative flex h-full w-full flex-col overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm transition-shadow",
-        selected && "ring-2 ring-ring/70",
-        dragging && "opacity-90 shadow-2xl",
+        "tile-enter group/tile relative flex h-full w-full flex-col overflow-hidden rounded-xl border border-line bg-card text-card-foreground shadow-card transition-[box-shadow,border-color] duration-200",
+        // Design: a tinted KPI is a flat color field — transparent border,
+        // no shadow (the .kpi-tint-* classes carry both).
+        isKpi && tintClass(kpiPosition),
+        selected && "border-accent-mid",
+        dragging && "opacity-95",
       )}
+      style={
+        dragging
+          ? { boxShadow: "0 24px 48px -16px rgba(22,27,46,.35)" }
+          : selected
+            ? { boxShadow: "0 0 0 3px var(--accent-soft), var(--shadow-card)" }
+            : undefined
+      }
       onPointerDown={() => selectTile(tile.id)}
       onMouseEnter={() => setHoveredTile(tile.id)}
       onMouseLeave={() => setHoveredTile(null)}
@@ -397,60 +414,109 @@ export const TileFrame = memo(function TileFrame({
         />
       ) : null}
       <div
-        className="flex shrink-0 cursor-grab touch-none select-none items-center gap-1.5 px-3 pb-1 pt-2.5 active:cursor-grabbing"
-        onPointerDown={onDragHandleDown}
-      >
-        <DotsSixVertical className="size-3.5 shrink-0 text-muted-foreground/50 opacity-0 transition-opacity group-hover/tile:opacity-100" />
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-        {renaming ? (
-          <input
-            autoFocus
-            value={draft}
-            aria-label="Tile title"
-            className="w-full min-w-0 border-b border-ring/60 bg-transparent text-xs font-medium text-foreground outline-none"
-            onChange={(e) => setDraft(e.target.value)}
-            onPointerDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitRename();
-              if (e.key === "Escape") setRenaming(false);
-            }}
-            onBlur={commitRename}
-            onFocus={(e) => e.currentTarget.select()}
-          />
-        ) : (
-          <>
-            <span className="truncate text-xs font-medium text-muted-foreground">
-              {tile.title}
-            </span>
-            <button
-              type="button"
-              aria-label={`Rename ${tile.title}`}
-              className="shrink-0 rounded p-0.5 text-muted-foreground/70 opacity-0 transition-opacity duration-150 hover:text-foreground group-hover/tile:opacity-100 group-hover/tile:delay-150"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setDraft(tile.title);
-                setRenaming(true);
-              }}
-            >
-              <PencilSimple className="size-3" />
-            </button>
-          </>
+        className={cn(
+          "flex shrink-0 select-none items-start gap-2 px-4 pb-1 pt-3.5",
+          layoutInteractive && "cursor-grab touch-none active:cursor-grabbing",
         )}
+        // The drag handler stops propagation, so the header selects the tile
+        // itself: pressing anywhere on a tile (header or body) selects it.
+        onPointerDown={
+          layoutInteractive
+            ? (e) => {
+                selectTile(tile.id);
+                onDragHandleDown(e);
+              }
+            : undefined
+        }
+        title={tileSpecTitle(tile)}
+      >
+        {/* Design header: 14px/500 title over a 12px faint sub-line built
+            from the real spec (measure, dataset, comparison, filters). */}
+        <div className="flex min-w-0 flex-1 flex-col gap-px">
+          <div className="flex min-w-0 items-center gap-1">
+            {renaming ? (
+              <input
+                autoFocus
+                value={draft}
+                aria-label="Tile title"
+                className="w-full min-w-0 border-b border-accent-mid bg-transparent text-[14px] font-medium leading-tight text-foreground outline-none"
+                onChange={(e) => setDraft(e.target.value)}
+                onPointerDown={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitRename();
+                  if (e.key === "Escape") setRenaming(false);
+                }}
+                onBlur={commitRename}
+                onFocus={(e) => e.currentTarget.select()}
+              />
+            ) : (
+              <>
+                <span
+                  className={cn(
+                    "text-[14px] font-medium leading-tight",
+                    // A KPI title is short but often two words wide at 3
+                    // columns: wrap it rather than clipping the metric name.
+                    // Titles wrap to two lines rather than clipping: a tile
+                    // named for what it shows must stay readable at 3 cols.
+                    "line-clamp-2 break-words",
+                    isKpi ? "text-muted-foreground" : "text-foreground",
+                  )}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setDraft(tile.title);
+                    setRenaming(true);
+                  }}
+                >
+                  {tile.title}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Rename ${tile.title}`}
+                  className={cn(
+                    "shrink-0 rounded p-0.5 text-faint transition-opacity duration-150 hover:text-foreground sm:opacity-0 sm:group-hover/tile:opacity-100 sm:group-hover/tile:delay-150 sm:group-focus-within/tile:opacity-100",
+                    // The stacked review layout is for reading, not editing:
+                    // its narrow tiles give the title the whole header.
+                    layoutInteractive ? "opacity-100" : "hidden sm:block",
+                  )}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDraft(tile.title);
+                    setRenaming(true);
+                  }}
+                >
+                  <PencilSimple className="size-3" />
+                </button>
+              </>
+            )}
+          </div>
+          {subline ? (
+            <span className="truncate text-[12px] leading-tight text-faint">
+              {subline}
+            </span>
+          ) : null}
+        </div>
         {pulsing ? (
-          <span className="chip-fading ml-1 inline-flex items-center gap-0.5 rounded-full border border-agent/30 bg-agent/15 px-1.5 py-px text-[10px] font-semibold text-agent">
-            <Sparkle weight="fill" className="size-2.5" />
-            AI
+          // Design `agent` pill. The screen-reader prefix keeps the plain
+          // "AI" attribution readable (and asserted) while the visible chip
+          // uses the design's word.
+          <span className="chip-fading mt-px shrink-0 rounded-full bg-accent-soft px-[7px] py-[2px] text-[11.5px] font-medium leading-[1.35] text-accent-strong">
+            <span className="sr-only">AI </span>agent
           </span>
         ) : null}
-        <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100 group-hover/tile:delay-150">
+        <div
+          className={cn(
+            "-mr-1 -mt-1 flex shrink-0 items-center gap-0.5 transition-opacity duration-150 sm:opacity-0 sm:group-hover/tile:opacity-100 sm:group-hover/tile:delay-150 sm:group-focus-within/tile:opacity-100",
+            layoutInteractive ? "opacity-100" : "hidden sm:flex",
+          )}
+        >
           {tile.type === "chart" ? <GranularitySelect tile={tile} /> : null}
           {tile.type === "chart" ? <ChartTypeSwitcher tile={tile} /> : null}
           <Button
             variant="ghost"
             size="icon-sm"
             aria-label={`Duplicate ${tile.title}`}
-            className="text-muted-foreground"
+            className="rounded-lg text-faint hover:bg-surface-2 hover:text-foreground"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={handleDuplicate}
           >
@@ -460,7 +526,7 @@ export const TileFrame = memo(function TileFrame({
             variant="ghost"
             size="icon-sm"
             aria-label={`Remove ${tile.title}`}
-            className="text-muted-foreground hover:text-destructive"
+            className="rounded-lg text-faint hover:bg-surface-2 hover:text-danger"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={handleRemove}
           >
@@ -468,15 +534,17 @@ export const TileFrame = memo(function TileFrame({
           </Button>
         </div>
       </div>
-      <div className="min-h-0 flex-1 px-3 pb-3 pt-1">
+
+      <div className={cn("min-h-0 flex-1", BODY_PADDING[tile.type])}>
         <TileBody tile={tile} />
       </div>
+      <TileProposalStrip tileId={tile.id} />
       {tile.annotations.length > 0 ? (
-        <div className="flex flex-wrap gap-1 border-t border-border/60 px-3 py-1.5">
+        <div className="flex flex-wrap gap-1 border-t border-line px-4 py-1.5">
           {tile.annotations.map((a) => (
             <span
               key={a.id}
-              className="inline-flex max-w-full items-center gap-1 rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-300"
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-warn-soft px-2 py-[2px] text-[11.5px] font-medium text-warn"
             >
               <Note weight="fill" className="size-2.5 shrink-0" />
               <span className="truncate">{a.text}</span>
@@ -484,15 +552,18 @@ export const TileFrame = memo(function TileFrame({
           ))}
         </div>
       ) : null}
-      <div
-        className="absolute bottom-0 right-0 z-10 size-4 cursor-nwse-resize touch-none opacity-0 transition-opacity group-hover/tile:opacity-100"
-        onPointerDown={onResizeHandleDown}
-        aria-label="Resize tile"
-      >
-        <svg viewBox="0 0 8 8" className="size-2.5 translate-x-0.5 translate-y-0.5 text-muted-foreground/60">
-          <path d="M7 1v6H1" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-        </svg>
-      </div>
+      {layoutInteractive ? (
+        <div
+          className="absolute bottom-0 right-0 z-10 size-4 cursor-nwse-resize touch-none opacity-0 transition-opacity group-hover/tile:opacity-100"
+          onPointerDown={onResizeHandleDown}
+          aria-label="Resize tile"
+        >
+          <svg viewBox="0 0 10 10" className="size-2.5 translate-x-0.5 translate-y-0.5 text-accent-strong">
+            <line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            <line x1="9" y1="5.5" x2="5.5" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </div>
+      ) : null}
     </div>
   );
 });

@@ -15,12 +15,15 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import type { Tile, TileLayout } from "@/lib/dashboard-store";
-import { useDashboardStore } from "@/lib/dashboard-store";
+import { DEFAULT_TILE_SIZE, useDashboardStore } from "@/lib/dashboard-store";
+import { useDataSource } from "@/lib/datasource";
+import { scaffoldFor } from "@/components/chrome/data-rail";
 import { TileFrame } from "./tile-frame";
 
 const COLS = 12;
-const ROW_H = 56;
+const ROW_H = 64;
 const GAP = 12;
 const MIN_W = 2;
 const MIN_H = 2;
@@ -106,6 +109,7 @@ function alignmentGuides(
 
 export function GridCanvas({ tiles }: { tiles: Tile[] }) {
   const moveTile = useDashboardStore((s) => s.moveTile);
+  const { datasets: dropDatasets } = useDataSource();
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -220,6 +224,54 @@ export function GridCanvas({ tiles }: { tiles: Tile[] }) {
     [moveTile, packedDrop],
   );
 
+  // A 12-column absolute editor cannot be made usable by shrinking it onto a
+  // phone. Below 720px the product becomes a reading/review surface: KPI tiles
+  // pair up, evidence tiles stack, and spatial drag/resize is disabled.
+  if (width > 0 && width < 720) {
+    return (
+      <div
+        ref={containerRef}
+        data-testid="grid-canvas"
+        data-layout-mode="stacked"
+        className="grid w-full grid-cols-1 gap-3 min-[480px]:grid-cols-2"
+      >
+        {tiles.map((tile) => {
+          const height =
+            tile.type === "kpi"
+              ? 152
+              : tile.type === "table"
+                ? 368
+                : tile.type === "markdown"
+                  ? 224
+                  : 304;
+          return (
+            <div
+              key={tile.id}
+              className={
+                (tile.type === "kpi" ? "col-span-1" : "col-span-full") +
+                " min-w-0"
+              }
+              style={{
+                height,
+                ["--tile-enter-delay" as string]: `${
+                  enterDelayRef.current.get(tile.id) ?? 0
+                }ms`,
+              }}
+            >
+              <TileFrame
+                tile={tile}
+                dragging={false}
+                layoutInteractive={false}
+                onDragHandleDown={() => undefined}
+                onResizeHandleDown={() => undefined}
+              />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   const rows = tiles.reduce((m, t) => Math.max(m, t.layout.y + t.layout.h), 0);
   // L9: the canvas hugs its content — a slim landing strip below the last
   // row (one gap + a little air), not a 160px void. The canvas ROOT
@@ -238,12 +290,74 @@ export function GridCanvas({ tiles }: { tiles: Tile[] }) {
         )
       : null;
 
+  /**
+   * Field drop: a column dragged from the data rail lands as a scaffolded
+   * tile at the grid cell under the pointer — the human's direct-manipulation
+   * mirror of the agent's add_tile.
+   */
+  const onFieldDrop = (event: React.DragEvent) => {
+    const raw = event.dataTransfer.getData("application/x-kontier-field");
+    if (!raw) return;
+    event.preventDefault();
+    let payload: { dataset: string; column: string };
+    try {
+      payload = JSON.parse(raw) as { dataset: string; column: string };
+    } catch {
+      return;
+    }
+    const dataset = dropDatasets.find((d) => d.name === payload.dataset);
+    const column = dataset?.columns.find((c) => c.name === payload.column);
+    if (!dataset || !column) {
+      toast.error(`${payload.dataset}.${payload.column} is no longer loaded.`);
+      return;
+    }
+    const input = scaffoldFor(dataset.name, column, dataset.columns);
+    const rect = containerRef.current?.getBoundingClientRect();
+    const size = DEFAULT_TILE_SIZE[input.type];
+    const layout =
+      rect && cellW > 0
+        ? {
+            x: Math.max(
+              0,
+              Math.min(
+                COLS - size.w,
+                Math.round((event.clientX - rect.left) / (cellW + GAP)),
+              ),
+            ),
+            y: Math.max(
+              0,
+              Math.round((event.clientY - rect.top) / (ROW_H + GAP)),
+            ),
+            w: size.w,
+            h: size.h,
+          }
+        : undefined;
+    const result = useDashboardStore.getState().addTile(
+      { ...input, ...(layout ? { layout } : {}) } as typeof input,
+      { origin: "human", label: `Added ${input.type} tile “${input.title}”` },
+    );
+    if (!result.ok) {
+      toast.error("error" in result ? result.error : "Could not add the tile.");
+      return;
+    }
+    if (result.tileId) useDashboardStore.getState().selectTile(result.tileId);
+    useDashboardStore.getState().setHoveredField(null);
+    toast.success(`Added “${input.title}”.`);
+  };
+
   return (
     <div
       ref={containerRef}
       data-testid="grid-canvas"
       className="relative w-full"
       style={{ height }}
+      onDragOver={(event) => {
+        if (event.dataTransfer.types.includes("application/x-kontier-field")) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+        }
+      }}
+      onDrop={onFieldDrop}
     >
       {guides
         ? guides.v.map((x) => (

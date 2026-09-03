@@ -15,9 +15,12 @@ import { withViewTransition } from "@/lib/theme-transition";
 import { CommandPalette } from "@/components/chrome/command-palette";
 import { DashboardManager } from "@/components/chrome/dashboard-manager";
 import { TemplatesGallery } from "@/components/chrome/templates-gallery";
+import { AddVisualDialog } from "@/components/chrome/add-visual";
+import { VersionHistory } from "@/components/chrome/version-history";
 import { DashboardPersistence } from "@/components/chrome/dashboard-persistence";
 import { SelectionToolbar } from "@/components/chrome/selection-toolbar";
 import { AgentAnnouncer } from "@/components/presence/agent-announcer";
+import { InvestigationRecorder } from "@/lib/investigations";
 
 function isEditableTarget(e: KeyboardEvent): boolean {
   const t = e.target as HTMLElement | null;
@@ -32,6 +35,22 @@ function isEditableTarget(e: KeyboardEvent): boolean {
  * otherwise deselects the selected tile (when no dialog is open — dialogs
  * and dropdown menus own their local Escape and stop propagation).
  */
+/** ⌘B toggles the field pane, the way a BI tool's data pane always has. */
+function DataRailHotkey() {
+  const toggleDataRail = useUiState((s) => s.toggleDataRail);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggleDataRail();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleDataRail]);
+  return null;
+}
+
 function PresentationHotkeys() {
   const togglePresentation = useUiState((s) => s.togglePresentation);
   const setPresentation = useUiState((s) => s.setPresentation);
@@ -84,12 +103,16 @@ export function ShellExtras() {
     <>
       <DashboardPersistence />
       <PresentationHotkeys />
+      <DataRailHotkey />
       <PresentationExit />
       <SelectionToolbar />
       <CommandPalette />
       <DashboardManager />
       <TemplatesGallery />
+      <AddVisualDialog />
+      <VersionHistory />
       <AgentAnnouncer />
+      <InvestigationRecorder />
     </>
   );
 }

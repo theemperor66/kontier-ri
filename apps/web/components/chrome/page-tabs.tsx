@@ -56,7 +56,7 @@ export function PageTabs() {
       data-testid="page-tabs"
       role="tablist"
       aria-label="Dashboard pages"
-      className="flex items-center gap-0.5 overflow-x-auto py-1"
+      className="flex items-center gap-0.5 overflow-x-auto"
     >
       {pages.map((p) => {
         const active = p.id === activePageId;
@@ -69,10 +69,12 @@ export function PageTabs() {
             data-testid={`page-tab-${p.id}`}
             data-active={active || undefined}
             className={cn(
-              "group/tab relative flex shrink-0 cursor-pointer items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+              // Design: the active page is dark text over a 2px underline,
+              // not a filled pill — the pill grammar belongs to chips.
+              "group/tab relative -mb-px flex shrink-0 cursor-pointer items-center gap-1 border-b-2 px-3 py-2 text-[13.5px] transition-colors",
               active
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                ? "border-accent-strong font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
             onClick={() => activate(p.id, p.name)}
             onKeyDown={(e) => {
@@ -109,8 +111,8 @@ export function PageTabs() {
               <button
                 aria-label={`Remove page ${p.name}`}
                 className={cn(
-                  "flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-destructive focus-visible:opacity-100",
-                  "group-hover/tab:opacity-100",
+                  "flex size-4 items-center justify-center rounded-full text-muted-foreground opacity-100 transition-opacity hover:bg-accent hover:text-destructive focus-visible:opacity-100 sm:opacity-0",
+                  "sm:group-hover/tab:opacity-100",
                 )}
                 onClick={(e) => {
                   e.stopPropagation();

@@ -51,7 +51,7 @@ test("legend click toggles a series, shift-click isolates; session-only (no acti
 
   // Session-only: legend toggles never reach the activity feed.
   await page.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Toggle activity feed" }).click();
+  await page.getByRole("menuitem", { name: "Activity feed" }).click();
   const feed = page.getByTestId("activity-feed");
   await expect(feed).toBeVisible();
   await expect(feed).not.toContainText("Count");
@@ -109,10 +109,12 @@ test("mark context menu: Keep only filters the tile; undo restores it", async ({
   const before = await churn.locator(".recharts-bar-rectangle").count();
   expect(before).toBeGreaterThan(5);
 
-  const box = (await churn.locator(".recharts-surface").first().boundingBox())!;
-  await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.6, {
-    button: "right",
-  });
+  // Chart-level handlers read recharts hover state, so hover the mark first
+  // (a real user always does) before opening its context menu.
+  const bar = churn.locator(".recharts-bar-rectangle").nth(3);
+  await bar.hover();
+  await page.waitForTimeout(250);
+  await bar.click({ button: "right" });
   const menu = page.getByTestId("mark-menu");
   await expect(menu).toBeVisible();
   await expect(menu).toContainText("month");

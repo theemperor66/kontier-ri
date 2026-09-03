@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CaretDown, CaretLeft, CaretRight, CaretUp } from "@phosphor-icons/react";
 import type { TableSpec, Tile } from "@/lib/dashboard-store";
 import { useTileData } from "@/lib/use-tile-data";
@@ -30,6 +30,37 @@ function toNum(v: unknown): number | null {
   return null;
 }
 
+/**
+ * Design: status-like values render as soft pills (High -> danger,
+ * Medium/Watch -> warn, the healthy end -> ok). Only KNOWN status words
+ * are pilled — an account name never turns into a badge.
+ */
+const STATUS_TONE: Record<string, string> = {
+  high: "bg-danger-soft text-danger",
+  critical: "bg-danger-soft text-danger",
+  severe: "bg-danger-soft text-danger",
+  failed: "bg-danger-soft text-danger",
+  churned: "bg-danger-soft text-danger",
+  medium: "bg-warn-soft text-warn",
+  watch: "bg-warn-soft text-warn",
+  warning: "bg-warn-soft text-warn",
+  pending: "bg-warn-soft text-warn",
+  "at risk": "bg-warn-soft text-warn",
+  low: "bg-ok-soft text-ok",
+  ok: "bg-ok-soft text-ok",
+  good: "bg-ok-soft text-ok",
+  healthy: "bg-ok-soft text-ok",
+  active: "bg-ok-soft text-ok",
+  succeeded: "bg-ok-soft text-ok",
+  success: "bg-ok-soft text-ok",
+  paid: "bg-ok-soft text-ok",
+};
+
+function statusTone(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  return STATUS_TONE[v.trim().toLowerCase()] ?? null;
+}
+
 /** Client-side comparator for the page-sort fallback. */
 function compareCells(a: unknown, b: unknown): number {
   if (a == null && b == null) return 0;
@@ -54,6 +85,21 @@ export function TableTile({ tile }: { tile: Tile }) {
 
   useEffect(() => {
     setPage(0);
+  }, [result]);
+
+  // Does the table reach past its tile? Measured, so the edge affordance
+  // only appears when there is something to scroll to.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [overflows, setOverflows] = useState(false);
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const measure = () =>
+      setOverflows(element.scrollWidth - element.clientWidth > 4);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
   }, [result]);
 
   const pageSorted = sort != null && serverSorted === false;
@@ -119,10 +165,16 @@ export function TableTile({ tile }: { tile: Tile }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-card">
-            <tr className="border-b text-left text-muted-foreground">
+      {/* A wide table scrolls sideways inside the tile. Overlay scrollbars
+          hide at rest, so the right edge dims while there is more to reach —
+          measured, never decorative. */}
+      <div className="relative min-h-0 flex-1">
+        <div ref={scrollRef} className="h-full overflow-auto">
+        {/* min-w-max keeps every column at its natural width: a wide table
+            scrolls inside the tile instead of clipping its last column. */}
+        <table className="w-full min-w-max text-[13px]">
+          <thead className="sticky top-0 z-[1] bg-card">
+            <tr className="border-b border-line text-left text-[12px] text-faint">
               {result.columns.map((c, ci) => {
                 const active = sort?.column === c.name;
                 const numeric = numericCols[ci] === true;
@@ -136,12 +188,12 @@ export function TableTile({ tile }: { tile: Tile }) {
                           : "descending"
                         : "none"
                     }
-                    className="whitespace-nowrap py-0 pr-1 font-medium"
+                    className="whitespace-nowrap px-2 py-0 font-normal first:pl-4 last:pr-4"
                   >
                     <button
                       type="button"
                       title={`Sort by ${c.name}`}
-                      className={`group/sort flex w-full items-center gap-0.5 py-1.5 pr-2 transition-colors hover:text-foreground ${
+                      className={`group/sort flex w-full items-center gap-0.5 pb-1.5 pt-1 transition-colors hover:text-foreground ${
                         numeric ? "justify-end text-right" : ""
                       } ${active ? "text-foreground" : ""}`}
                       onClick={() => cycleSort(c.name)}
@@ -169,7 +221,7 @@ export function TableTile({ tile }: { tile: Tile }) {
             {rows.map((r, i) => (
               <tr
                 key={i}
-                className="border-b border-border/50 transition-colors last:border-0 hover:bg-accent/40"
+                className="border-b border-line transition-colors last:border-0 hover:bg-surface-2"
               >
                 {r.map((v, j) => {
                   const col = result.columns[j]?.name ?? String(j);
@@ -190,16 +242,18 @@ export function TableTile({ tile }: { tile: Tile }) {
                       : n != null && valueFormat != null
                         ? formatValue(n, valueFormat)
                         : cellText(v);
+                  const pill = statusTone(v);
                   return (
                     <td
                       key={j}
                       className={
-                        "whitespace-nowrap py-[5px] pr-3 tabular-nums text-foreground/90" +
+                        "whitespace-nowrap px-2 py-[7px] tabular-nums first:pl-4 last:pr-4 " +
+                        (j === 0
+                          ? "font-medium text-foreground"
+                          : "text-foreground/90") +
                         (numericCols[j] === true ? " text-right" : "") +
-                        (v != null
-                          ? " cursor-pointer hover:bg-accent/60"
-                          : "") +
-                        (active ? " ring-1 ring-inset ring-ring/70" : "")
+                        (v != null ? " cursor-pointer" : "") +
+                        (active ? " ring-1 ring-inset ring-accent-mid" : "")
                       }
                       style={
                         ruleColor
@@ -226,7 +280,15 @@ export function TableTile({ tile }: { tile: Tile }) {
                         v != null ? `Filter dashboard by ${col}` : undefined
                       }
                     >
-                      {text}
+                      {pill ? (
+                        <span
+                          className={`inline-flex rounded-full px-2 py-[2px] text-[11.5px] font-medium ${pill}`}
+                        >
+                          {text}
+                        </span>
+                      ) : (
+                        text
+                      )}
                     </td>
                   );
                 })}
@@ -234,9 +296,17 @@ export function TableTile({ tile }: { tile: Tile }) {
             ))}
           </tbody>
         </table>
+        </div>
+        {overflows ? (
+          <div
+            aria-hidden
+            data-testid="table-scroll-affordance"
+            className="pointer-events-none absolute inset-y-0 right-0 z-[2] w-8 bg-gradient-to-l from-card via-card/80 to-transparent"
+          />
+        ) : null}
       </div>
       {pages > 1 || pageSorted ? (
-        <div className="flex items-center justify-between border-t pt-1.5 text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between border-t border-line px-4 pt-1.5 text-[12px] text-faint">
           <span>
             {result.rows.length} rows{result.truncated ? " (capped)" : ""}
             {pageSorted ? (

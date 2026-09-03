@@ -9,7 +9,13 @@ import {
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
 } from "recharts";
-import { axisTickFormatter, chartContextMenu, type BaseChartProps } from "./common";
+import {
+  AXIS_TICK,
+  axisTickFormatter,
+  chartContextMenu,
+  GRID_INK,
+  type BaseChartProps,
+} from "./common";
 import { chartTooltip } from "./chart-tooltip";
 
 /** Radar / spider chart over the xKey categories. */
@@ -30,13 +36,10 @@ export function RadarChartView({
         margin={{ top: 8, right: 16, bottom: 4, left: 16 }}
         onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
       >
-        <PolarGrid stroke="var(--border)" />
-        <PolarAngleAxis
-          dataKey={xKey}
-          tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-        />
+        <PolarGrid stroke={GRID_INK} />
+        <PolarAngleAxis dataKey={xKey} tick={AXIS_TICK} />
         <PolarRadiusAxis
-          tick={{ fontSize: 9, fill: "var(--muted-foreground)" }}
+          tick={{ fontSize: 10, fill: "var(--faint)" }}
           tickFormatter={axisTickFormatter(valueFormat)}
           axisLine={false}
         />

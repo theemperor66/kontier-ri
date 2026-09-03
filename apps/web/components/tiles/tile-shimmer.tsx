@@ -9,16 +9,16 @@ import { cn } from "@/lib/utils";
 export function TileShimmer({ kind = "chart" }: { kind?: "chart" | "kpi" | "table" }) {
   if (kind === "kpi") {
     return (
-      <div className="flex h-full flex-col justify-center gap-2 px-1">
-        <div className="h-9 w-32 animate-pulse rounded-md bg-muted" />
-        <div className="h-4 w-20 animate-pulse rounded-md bg-muted/70" />
+      <div className="flex h-full flex-col justify-end gap-2">
+        <div className="h-8 w-32 animate-pulse rounded-md bg-surface-2" />
+        <div className="h-3.5 w-24 animate-pulse rounded-md bg-surface-2/70" />
       </div>
     );
   }
   if (kind === "table") {
     return (
-      <div className="flex h-full flex-col gap-1.5 overflow-hidden py-1">
-        <div className="h-4 w-full animate-pulse rounded bg-muted" />
+      <div className="flex h-full flex-col gap-1.5 overflow-hidden px-4 py-1">
+        <div className="h-4 w-full animate-pulse rounded bg-surface-2" />
         {[0.9, 0.75, 0.85, 0.7, 0.8].map((w, i) => (
           <div
             key={i}

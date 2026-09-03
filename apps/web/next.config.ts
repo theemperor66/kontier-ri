@@ -13,6 +13,10 @@ const basePath = process.env.NEXT_BASE_PATH || "";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@kontier-ri/datasource", "@kontier-ri/studio"],
+  // The dev overlay badge floats over the bottom-left tile band, where the
+  // canvas shows real state; screenshots and manual QA read the product
+  // instead of the toolbar.
+  devIndicators: false,
   outputFileTracingRoot: path.join(import.meta.dirname, "../.."),
   ...(process.env.NEXT_OUTPUT === "export"
     ? { output: "export" as const, images: { unoptimized: true } }

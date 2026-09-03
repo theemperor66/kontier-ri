@@ -2,6 +2,9 @@
 
 export type ValueFormat = "currency" | "number" | "percent" | "compact";
 
+/** Currency the string form of a format ("currency") renders in. */
+export const DEFAULT_CURRENCY = "EUR";
+
 /** Options-object form used by v2 tile specs (spec.format.value). */
 export interface FormatOptions {
   style?: ValueFormat;
@@ -31,7 +34,7 @@ function normalize(
 export function formatValue(
   value: number | null | undefined,
   format: ValueFormat | FormatOptions = "number",
-  currency = "EUR",
+  currency = DEFAULT_CURRENCY,
 ): string {
   if (value == null || Number.isNaN(value)) return "—";
   const opts = normalize(format, currency);

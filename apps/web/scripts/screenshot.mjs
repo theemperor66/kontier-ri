@@ -9,7 +9,7 @@ const browser = await chromium.launch();
 const page = await browser.newPage({
   viewport: { width, height },
   deviceScaleFactor: 2,
-  colorScheme: "dark",
+  colorScheme: "light",
 });
 await page.goto(base, { waitUntil: "domcontentloaded" });
 const btn = page.getByTestId("load-demo");

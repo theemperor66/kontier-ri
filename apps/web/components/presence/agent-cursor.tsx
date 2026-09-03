@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Synthetic agent cursor (E2): a cursor glyph with a "Kai" name tag that
+ * Synthetic agent cursor (E2): a cursor glyph with a "Agent" name tag that
  * flies (FLIP: transform-only transition, no layout) to every tile the
  * agent just mutated. Driven exclusively off the store's agentPulse map —
  * which only agent-origin commands set — so it never fakes activity.
@@ -75,7 +75,7 @@ export function AgentCursor() {
         />
       </svg>
       <span className="ml-3.5 -mt-1 inline-block rounded-full bg-agent px-1.5 py-px text-[10px] font-semibold leading-4 text-background shadow-sm">
-        Kai
+        Agent
       </span>
     </div>
   );

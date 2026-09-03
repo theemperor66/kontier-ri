@@ -105,7 +105,7 @@ export function normalizeDoc(raw: unknown): DashboardDoc {
           : "Untitled dashboard",
       theme: {
         ...(d.theme?.palette ? { palette: d.theme.palette } : {}),
-        mode: d.theme?.mode === "light" ? "light" : "dark",
+        mode: d.theme?.mode === "dark" ? "dark" : "light",
       },
       filters: {
         filters: Array.isArray(d.filters?.filters) ? d.filters.filters : [],

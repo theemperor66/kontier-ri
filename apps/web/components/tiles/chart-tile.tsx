@@ -10,8 +10,6 @@ import {
   ComposedChart,
   Legend,
   Line,
-  Pie,
-  PieChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
@@ -25,12 +23,13 @@ import { resolveRuleColor } from "@/lib/format";
 import { TileError } from "./tile-error";
 import { TileShimmer } from "./tile-shimmer";
 import {
+  AXIS_TICK,
   axisTickFormatter,
   axisWidth,
   CHART_PALETTE,
+  GRID_INK,
   chartContextMenu,
   legendToggleContent,
-  sectorContextMenu,
   seriesInk,
   markOpacity,
   TREND_KEY,
@@ -98,16 +97,6 @@ function toPlottable(v: unknown): unknown {
     return v.match(/^-?\d+(\.\d+)?$/) ? Number(v) : v;
   }
   return v;
-}
-
-/** Whole-pie total so slice tooltips can show % of total. */
-function pieTotal(rows: Record<string, unknown>[], key: string): number {
-  let sum = 0;
-  for (const r of rows) {
-    const v = r[key];
-    if (typeof v === "number" && Number.isFinite(v)) sum += v;
-  }
-  return sum;
 }
 
 function isNumericType(type: string): boolean {
@@ -187,7 +176,7 @@ export function ChartTile({ tile }: { tile: Tile }) {
   if (loading || !result) return <TileShimmer kind="chart" />;
   if (data.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+      <div className="flex h-full items-center justify-center text-[13px] text-muted-foreground">
         No rows for the current filters.
       </div>
     );
@@ -235,13 +224,13 @@ export function ChartTile({ tile }: { tile: Tile }) {
     <ReferenceLine
       key={`ann-${i}`}
       x={a.anchor?.x as string | number}
-      stroke="var(--chart-4)"
+      stroke="var(--warn)"
       strokeDasharray="4 3"
       label={{
         value: a.text.length > 24 ? `${a.text.slice(0, 24)}…` : a.text,
         position: "insideTopRight",
-        fill: "var(--muted-foreground)",
-        fontSize: 10,
+        fill: "var(--warn)",
+        fontSize: 11,
       }}
     />
   ));
@@ -266,7 +255,16 @@ export function ChartTile({ tile }: { tile: Tile }) {
     />
   ) : null;
   const legendEl = spec.legend ? (
-    <Legend content={legendToggleContent(legendToggle, seriesKeys)} />
+    <Legend
+      content={legendToggleContent(
+        legendToggle,
+        seriesKeys,
+        // Design: line-ish series read as a 10x2 rule, marks as a square.
+        spec.chartType === "line" || spec.chartType === "area"
+          ? "bar"
+          : "square",
+      )}
+    />
   ) : null;
   const menuEl = markTarget ? (
     <MarkMenu
@@ -369,49 +367,17 @@ export function ChartTile({ tile }: { tile: Tile }) {
   if (spec.chartType === "pie") {
     const valueKey = seriesKeys[0];
     if (!valueKey) return <TileError message="Pie chart needs a numeric column." />;
+    // Design: pie and donut share one form — ring + centered count + a
+    // right-side legend list (a pie just carries a smaller hole).
     return (
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
-          <Pie
-            data={data}
-            dataKey={valueKey}
-            nameKey={xKey}
-            innerRadius="55%"
-            outerRadius="85%"
-            paddingAngle={2}
-            stroke="var(--card)"
-            className="cursor-crosshair"
-            onContextMenu={sectorContextMenu(xKey, openMarkMenu) as never}
-            onClick={(item: unknown) => {
-              // recharts 3 spreads the datum into the sector item; payload
-              // is not always present.
-              const entry = item as
-                | ({ payload?: Record<string, unknown>; name?: unknown } & Record<string, unknown>)
-                | undefined;
-              const v = entry?.payload?.[xKey] ?? entry?.[xKey] ?? entry?.name;
-              if (v != null) handleItemClick({ column: xKey, value: v });
-            }}
-          >
-            {data.map((row, i) => (
-              <Cell
-                key={i}
-                fill={colorFor(i)}
-                opacity={markOpacity(activeValue, row[xKey])}
-              />
-            ))}
-          </Pie>
-          <RechartsTooltip
-            content={chartTooltip({
-              share: true,
-              total: pieTotal(data, valueKey),
-              formatFor: () => valueFormat,
-              labelFor: (_k, name) => name,
-            })}
-          />
-        </PieChart>
-      </ResponsiveContainer>
+      <DonutChartView
+        {...baseProps}
+        categoryToggle={legendToggle}
+        variant="pie"
+      />
     );
   }
+
 
   const plotted =
     trend && seriesKeys[0] ? withTrend(data, seriesKeys[0], TREND_KEY) : data;
@@ -421,13 +387,22 @@ export function ChartTile({ tile }: { tile: Tile }) {
   };
   const axes = (
     <>
-      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-      <XAxis dataKey={xKey} tickLine={false} axisLine={false} minTickGap={24} />
+      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={GRID_INK} />
+      <XAxis
+        dataKey={xKey}
+        tickLine={false}
+        axisLine={false}
+        minTickGap={24}
+        tick={AXIS_TICK}
+        stroke={GRID_INK}
+      />
       <YAxis
         tickLine={false}
         axisLine={false}
         width={axisWidth(valueFormat)}
         tickFormatter={axisTickFormatter(valueFormat)}
+        tick={AXIS_TICK}
+        stroke={GRID_INK}
       />
       <RechartsTooltip
         content={chartTooltip({

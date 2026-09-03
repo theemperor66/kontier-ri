@@ -65,7 +65,7 @@ export function FunnelChartView({
             );
           }}
         >
-          <span className="flex w-24 shrink-0 items-center justify-end truncate text-[11px] text-muted-foreground">
+          <span className="flex w-24 shrink-0 items-center justify-end truncate text-[12px] text-muted-foreground">
             {s.label}
           </span>
           <span className="relative flex min-w-0 flex-1 items-center">
@@ -79,11 +79,11 @@ export function FunnelChartView({
                 opacity: markOpacity(activeValue, s.raw),
               }}
             />
-            <span className="ml-1.5 shrink-0 text-[11px] font-medium tabular-nums">
+            <span className="ml-1.5 shrink-0 text-[12px] font-medium tabular-nums">
               {formatValue(s.value, valueFormat ?? "compact")}
             </span>
             {s.convPct != null ? (
-              <span className="ml-1 shrink-0 text-[10px] tabular-nums text-muted-foreground">
+              <span className="ml-1 shrink-0 text-[11.5px] tabular-nums text-faint">
                 {formatValue(s.convPct, "percent")}
               </span>
             ) : null}

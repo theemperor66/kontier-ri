@@ -12,9 +12,11 @@ import {
   YAxis,
 } from "recharts";
 import {
+  AXIS_TICK,
   axisTickFormatter,
   axisWidth,
   chartContextMenu,
+  GRID_INK,
   markOpacity,
   sectorContextMenu,
   TREND_KEY,
@@ -100,7 +102,7 @@ export function ScatterChartView({
         onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
         className={onItemClick ? "cursor-crosshair" : undefined}
       >
-        <CartesianGrid strokeDasharray="3 3" />
+        <CartesianGrid strokeDasharray="3 3" stroke={GRID_INK} />
         <XAxis
           dataKey={xKey}
           type={numericX ? "number" : "category"}
@@ -108,6 +110,8 @@ export function ScatterChartView({
           tickLine={false}
           axisLine={false}
           minTickGap={24}
+          tick={AXIS_TICK}
+          stroke={GRID_INK}
           tickFormatter={numericX ? axisTickFormatter("number") : undefined}
           label={{
             value: humanizeIdent(xKey),
@@ -121,6 +125,8 @@ export function ScatterChartView({
           tickLine={false}
           axisLine={false}
           domain={[hasNegative ? "auto" : 0, "auto"]}
+          tick={AXIS_TICK}
+          stroke={GRID_INK}
           width={axisWidth(valueFormat) + 14}
           tickFormatter={axisTickFormatter(valueFormat)}
           label={

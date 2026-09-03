@@ -11,6 +11,11 @@ import type { FormatOptions, ValueFormat } from "@/lib/format";
 import { formatAxisTick, prettifySeriesLabel } from "@/lib/format";
 import { useDashboardStore } from "@/lib/dashboard-store";
 
+/**
+ * Series ink: the design's indigo ramp first (--chart-1..3), with the
+ * status green/amber only as 4th/5th overflow so a dense chart stays
+ * readable. "Bad" series map to --danger through `seriesInk`.
+ */
 export const CHART_PALETTE = [
   "var(--chart-1)",
   "var(--chart-2)",
@@ -18,6 +23,10 @@ export const CHART_PALETTE = [
   "var(--chart-4)",
   "var(--chart-5)",
 ] as const;
+
+/** Design axis + grid ink: hairline --line grid, 11.5px --faint ticks. */
+export const GRID_INK = "var(--line)";
+export const AXIS_TICK = { fontSize: 11.5, fill: "var(--faint)" } as const;
 
 /**
  * Render-side ink mapping (L1): specs that pin the raw destructive token
@@ -194,13 +203,15 @@ interface LegendPayloadEntry {
 export function legendToggleContent(
   legend: LegendToggle,
   allKeys: readonly string[],
+  /** Design swatch: a 10x2 bar for line-ish series, an 8px square else. */
+  swatch: "bar" | "square" = "square",
 ): (props: unknown) => React.ReactNode {
   const render = (props: unknown) => {
     const { payload } = props as { payload?: LegendPayloadEntry[] };
     if (!payload || payload.length === 0) return null;
     return (
       <ul
-        className="flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 pt-0.5 text-[11px] leading-4"
+        className="flex flex-wrap items-center justify-center gap-x-4 gap-y-0.5 pt-0.5 text-[12px] leading-4"
         role="group"
         aria-label="Toggle series"
       >
@@ -221,7 +232,7 @@ export function legendToggleContent(
                     ? `Show ${label} (shift-click isolates)`
                     : `Hide ${label} (shift-click isolates)`
                 }
-                className={`flex min-w-0 cursor-pointer items-center gap-1 transition-opacity ${
+                className={`flex min-w-0 cursor-pointer items-center gap-1.5 transition-opacity ${
                   off ? "opacity-40" : ""
                 } text-muted-foreground hover:text-foreground`}
                 onPointerDown={(e) => e.stopPropagation()}
@@ -232,7 +243,11 @@ export function legendToggleContent(
               >
                 <span
                   aria-hidden
-                  className="size-2 shrink-0 rounded-[3px]"
+                  className={
+                    swatch === "bar"
+                      ? "h-[2px] w-[10px] shrink-0"
+                      : "size-2 shrink-0 rounded-[2px]"
+                  }
                   style={{ backgroundColor: entry.color ?? "var(--chart-1)" }}
                 />
                 <span className="truncate">{label}</span>

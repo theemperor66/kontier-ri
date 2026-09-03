@@ -110,6 +110,11 @@ export function CommandPalette() {
   const setManagerOpen = useUiState((s) => s.setManagerOpen);
   const setTemplatesOpen = useUiState((s) => s.setTemplatesOpen);
   const togglePresentation = useUiState((s) => s.togglePresentation);
+  const setView = useUiState((s) => s.setView);
+  const setAgentPanelOpen = useUiState((s) => s.setAgentPanelOpen);
+  const setAddVisualOpen = useUiState((s) => s.setAddVisualOpen);
+  const toggleDataRail = useUiState((s) => s.toggleDataRail);
+  const setVersionsOpen = useUiState((s) => s.setVersionsOpen);
   const { datasets, importFiles, status } = useDataSource();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -222,7 +227,34 @@ export function CommandPalette() {
             No matching command.
           </Command.Empty>
 
+          <Command.Group heading="Go to">
+            {(
+              [
+                ["home", "Home"],
+                ["canvas", "Reports"],
+                ["approvals", "Approvals"],
+                ["datasets", "Datasets"],
+                ["model", "Semantic model"],
+                ["governance", "Data health"],
+                ["audit", "Audit log"],
+              ] as const
+            ).map(([view, label]) => (
+              <Command.Item key={view} onSelect={run(() => setView(view))}>
+                <SquaresFour className="size-4 text-muted-foreground" /> {label}
+              </Command.Item>
+            ))}
+            <Command.Item onSelect={run(() => setAgentPanelOpen(true))}>
+              <Robot className="size-4 text-muted-foreground" /> Open the agent panel
+            </Command.Item>
+          </Command.Group>
+
           <Command.Group heading="Add">
+            <Command.Item onSelect={run(() => setAddVisualOpen(true))}>
+              <PlusCircle className="size-4 text-muted-foreground" /> Add visual (guided)
+            </Command.Item>
+            <Command.Item onSelect={run(() => toggleDataRail())}>
+              <Table className="size-4 text-muted-foreground" /> Toggle the field pane (⌘B)
+            </Command.Item>
             <Command.Item onSelect={run(() => addTile("kpi"))}>
               <Gauge className="size-4 text-muted-foreground" /> Add KPI tile
             </Command.Item>
@@ -240,6 +272,9 @@ export function CommandPalette() {
           <Command.Group heading="Dashboard">
             <Command.Item onSelect={run(() => setManagerOpen(true))}>
               <SquaresFour className="size-4 text-muted-foreground" /> Manage dashboards
+            </Command.Item>
+            <Command.Item onSelect={run(() => setVersionsOpen(true))}>
+              <ArrowCounterClockwise className="size-4 text-muted-foreground" /> Version history
             </Command.Item>
             <Command.Item onSelect={run(() => createDashboard())}>
               <PlusCircle className="size-4 text-muted-foreground" /> New blank dashboard
@@ -272,6 +307,16 @@ export function CommandPalette() {
               )}
             >
               <MoonStars className="size-4 text-muted-foreground" /> Toggle dark / light mode
+            </Command.Item>
+            <Command.Item
+              onSelect={run(() => {
+                const result = store
+                  .getState()
+                  .tidyLayout({ origin: "human", label: "Tidied the layout" });
+                if (!result.ok && "error" in result) toast.message(result.error);
+              })}
+            >
+              <SquaresFour className="size-4 text-muted-foreground" /> Tidy the layout
             </Command.Item>
             <Command.Item onSelect={run(() => store.getState().undo())}>
               <ArrowCounterClockwise className="size-4 text-muted-foreground" /> Undo

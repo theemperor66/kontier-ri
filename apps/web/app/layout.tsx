@@ -48,6 +48,29 @@ export const metadata: Metadata = {
   },
 };
 
+const DIRECTION_CONTRACT = `THESIS: A revenue investigation room where the live report is the
+shared working memory of a human and a browser agent. It refuses the
+chat-sidebar pattern: questions, plans, decisions and approvals are
+product objects on the page, not messages beside it.
+OWN-WORLD: The sponsor-pinned Kontier RI design — navy #0F1426
+navigation rail against a #F5F6FA canvas, white surfaces, indigo
+#3D4FE0 action ink, mint/lavender/peach KPI fields, 12px cards, 8-9px
+controls, DM Sans with tabular numerals, hairline #E6E8EF rules.
+STORY: The operator states a brief, points at a signal, watches the
+agent work in the open, answers its questions, approves its evidence,
+and keeps a report they can still edit and undo.
+FIRST VIEWPORT: Rail left (workspace, surfaces, live agent status),
+56px top bar with breadcrumb, command search and agent status, report
+title with filter chips and page tabs, KPI row over the dotted canvas,
+340px agent panel on the right holding brief, decisions and approvals.
+FORM: User-pinned product design (Kontier RI.html); ported verbatim in
+tokens, geometry and component grammar, with product truth replacing
+the design's placeholder facts. The pin is the declared substitute for
+a concept-seed key: the direction was supplied, not rolled.
+FINISH: unreviewed and undocumented is unfinished; this build ends
+with the finish review, the verdict, DESIGN.md, and every shipping
+raster carrying its provenance.`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -58,7 +81,14 @@ export default function RootLayout({
       className={`${dmSans.variable} ${jetbrainsMono.variable} font-sans`}
     >
       <body className="antialiased">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+        {/* Direction contract — emitted as a real HTML comment so it survives
+            the production build and can be audited in the shipped markup. */}
+        <div
+          hidden
+          aria-hidden
+          dangerouslySetInnerHTML={{ __html: `<!--\n${DIRECTION_CONTRACT}\n-->` }}
+        />
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           {children}
         </ThemeProvider>
       </body>

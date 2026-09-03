@@ -11,8 +11,10 @@ import {
   YAxis,
 } from "recharts";
 import {
+  AXIS_TICK,
   axisTickFormatter,
   chartContextMenu,
+  GRID_INK,
   markOpacity,
   type BaseChartProps,
 } from "./common";
@@ -58,12 +60,14 @@ export function HBarChartView({
         onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
         className={onItemClick ? "cursor-crosshair" : undefined}
       >
-        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={GRID_INK} />
         <XAxis
           type="number"
           tickLine={false}
           axisLine={false}
           tickFormatter={axisTickFormatter(valueFormat)}
+          tick={AXIS_TICK}
+          stroke={GRID_INK}
         />
         <YAxis
           type="category"
@@ -71,7 +75,8 @@ export function HBarChartView({
           tickLine={false}
           axisLine={false}
           width={labelWidth}
-          tick={{ fontSize: 11 }}
+          tick={{ fontSize: 11.5, fill: "var(--ink-muted)" }}
+          stroke={GRID_INK}
           interval={0}
         />
         <RechartsTooltip

@@ -14,9 +14,11 @@ import {
 import type { FormatOptions, ValueFormat } from "@/lib/format";
 import { prettifySeriesLabel } from "@/lib/format";
 import {
+  AXIS_TICK,
   axisTickFormatter,
   axisWidth,
   chartContextMenu,
+  GRID_INK,
   markOpacity,
   type BaseChartProps,
 } from "./common";
@@ -76,14 +78,23 @@ export function ComboChartView({
         onContextMenu={chartContextMenu(xKey, onItemContextMenu)}
         className={onItemClick ? "cursor-crosshair" : undefined}
       >
-        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-        <XAxis dataKey={xKey} tickLine={false} axisLine={false} minTickGap={24} />
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={GRID_INK} />
+        <XAxis
+          dataKey={xKey}
+          tickLine={false}
+          axisLine={false}
+          minTickGap={24}
+          tick={AXIS_TICK}
+          stroke={GRID_INK}
+        />
         <YAxis
           yAxisId="left"
           tickLine={false}
           axisLine={false}
           width={axisWidth(valueFormat)}
           tickFormatter={axisTickFormatter(valueFormat)}
+          tick={AXIS_TICK}
+          stroke={GRID_INK}
         />
         {hasRight ? (
           <YAxis
@@ -93,6 +104,8 @@ export function ComboChartView({
             axisLine={false}
             width={axisWidth(y2Format ?? valueFormat) + 14}
             tickFormatter={axisTickFormatter(y2Format ?? valueFormat)}
+            tick={AXIS_TICK}
+            stroke={GRID_INK}
             label={
               rightKey
                 ? {

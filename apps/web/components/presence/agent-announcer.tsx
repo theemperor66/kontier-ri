@@ -2,7 +2,7 @@
 
 /**
  * U6: polite aria-live narration of agent actions. Watches the activity-log
- * tail and announces new agent entries ("Kai added chart X") to screen
+ * tail and announces new agent entries ("Agent added chart X") to screen
  * readers without any visual footprint. History present at mount is never
  * announced.
  */
@@ -13,7 +13,7 @@ import { useDashboardStore } from "@/lib/dashboard-store";
 function toAnnouncement(label: string): string {
   // Labels read "Added kpi tile ..." or "Agent shared a plan ...".
   const text = label.replace(/^Agent\s+/, "");
-  return `Kai ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+  return `Agent ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
 }
 
 export function AgentAnnouncer() {

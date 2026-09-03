@@ -1,9 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Agent presence e2e (E2): plan card, insight tray and the synthetic Kai
- * cursor render ONLY from real WebMCP tool calls (mocked modelContext,
- * same harness as smoke.spec.ts) — never from timers.
+ * Collaboration e2e: every visible agent state is driven by a real mocked
+ * WebMCP tool call. The human-authored brief and decision answer flow back to
+ * the agent through get_work_context.
  */
 
 const MOCK_MODEL_CONTEXT = `
@@ -24,15 +24,16 @@ const MOCK_MODEL_CONTEXT = `
   });
 `;
 
-async function loadDemo(page: Page) {
+async function loadInvestigation(page: Page) {
   await page.goto("/");
   const demoButton = page.getByTestId("load-demo");
   await expect(demoButton).toBeEnabled({ timeout: 60_000 });
   await demoButton.click();
   await expect(page.locator("[data-tile-type]")).toHaveCount(8);
+  await expect(page.getByTestId("collaboration-rail")).toBeVisible();
 }
 
-function executeTool(page: Page, name: string, input: unknown): Promise<unknown> {
+function executeTool(page: Page, name: string, input: unknown): Promise<any> {
   return page.evaluate(
     async ({ name, input }) => {
       const tools = (
@@ -51,114 +52,132 @@ function executeTool(page: Page, name: string, input: unknown): Promise<unknown>
   );
 }
 
-test("present_plan renders Kai's plan card; steps tick; clear_plan removes it", async ({
+test("brief → plan → structured decision → completion is a two-way WebMCP loop", async ({
   page,
 }) => {
   await page.addInitScript(MOCK_MODEL_CONTEXT);
-  await loadDemo(page);
+  await loadInvestigation(page);
 
-  // Honesty rule: no presence UI before any tool call.
-  await expect(page.getByTestId("plan-card")).toHaveCount(0);
-  await expect(page.getByTestId("insight-tray")).toHaveCount(0);
-
-  const result = await executeTool(page, "present_plan", {
-    title: "Find churn drivers",
-    steps: [{ label: "Scan invoices" }, { label: "Chart refunds" }],
+  const initial = await executeTool(page, "get_work_context", {});
+  expect(initial.session).toMatchObject({
+    phase: "ready",
+    objective: expect.stringContaining("March churn spike"),
   });
-  expect(result).toMatchObject({ ok: true, steps: 2 });
+  expect(initial.workingAgreement.agentEdits).toContain("undoable");
 
-  const card = page.getByTestId("plan-card");
-  await expect(card).toBeVisible();
-  await expect(card).toContainText("Kai");
-  await expect(card).toContainText("Find churn drivers");
-  await expect(card).toContainText("0/2");
-  await expect(page.getByTestId("plan-step-0")).toHaveAttribute(
-    "data-status",
-    "pending",
-  );
+  await executeTool(page, "present_plan", {
+    title: "Explain the churn spike",
+    steps: [
+      { label: "Profile churn cohorts" },
+      { label: "Compare plan changes" },
+      { label: "Return reviewed evidence" },
+    ],
+  });
+  const rail = page.getByTestId("collaboration-rail");
+  await expect(rail.getByTestId("rail-plan")).toBeVisible();
+  await expect(rail).toContainText("Planning");
+  await expect(rail).toContainText("0 of 3 complete");
 
   await executeTool(page, "update_plan_step", { index: 0, status: "active" });
-  await expect(page.getByTestId("plan-step-0")).toHaveAttribute(
-    "data-status",
-    "active",
-  );
-  await executeTool(page, "update_plan_step", { index: 0, status: "done" });
-  await expect(page.getByTestId("plan-step-0")).toHaveAttribute(
-    "data-status",
-    "done",
-  );
-  await expect(card).toContainText("1/2");
+  await expect(rail).toContainText("Investigating");
 
-  // Plan events land in the activity feed (logged, but NOT undoable).
-  await page.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Toggle activity feed" }).click();
-  await expect(page.getByTestId("activity-feed")).toContainText(
-    "Agent shared a plan",
-  );
+  const request = await executeTool(page, "request_decision", {
+    question: "Which baseline should define the spike?",
+    context:
+      "The month-over-month comparison is sharper, while the quarterly baseline is less seasonal.",
+    options: [
+      {
+        id: "monthly",
+        label: "Previous month",
+        description: "Best for the immediate operational change.",
+      },
+      {
+        id: "quarterly",
+        label: "Quarterly baseline",
+        description: "Reduces seasonality in the comparison.",
+      },
+    ],
+    recommendedOptionId: "monthly",
+  });
+  expect(request).toMatchObject({ ok: true, status: "pending" });
+  const decision = rail.getByTestId("decision-request");
+  await expect(decision).toBeVisible();
+  await expect(rail).toContainText("Your judgment is needed");
+  await expect(rail).toContainText("Agent pick");
+  await decision.getByTestId("decision-option-monthly").click();
+  await expect(decision).toHaveCount(0);
 
-  await executeTool(page, "clear_plan", {});
-  await expect(card).toHaveCount(0);
+  const afterAnswer = await executeTool(page, "get_work_context", {});
+  expect(afterAnswer.decisions).toEqual([
+    expect.objectContaining({
+      id: request.decisionId,
+      status: "answered",
+      answer: { optionId: "monthly" },
+    }),
+  ]);
+
+  for (let index = 0; index < 3; index += 1) {
+    await executeTool(page, "update_plan_step", { index, status: "done" });
+  }
+  const completed = await executeTool(page, "complete_work", {
+    summary:
+      "The spike is concentrated in Growth-plan renewals after the March price change.",
+    outcomes: [
+      "Used the human-approved month-over-month baseline.",
+      "Kept the conclusion in the shared investigation trail.",
+    ],
+  });
+  expect(completed).toMatchObject({ ok: true, phase: "complete" });
+  await expect(rail).toContainText("Complete");
+  await expect(rail).toContainText("Growth-plan renewals");
+  await expect(rail).toContainText("human-approved month-over-month baseline");
 });
 
-test("propose_insight chip: Accept applies the suggested annotation (undoable); Dismiss waves one away", async ({
+test("reviewed proposal applies through the attributed command layer and remains undoable", async ({
   page,
 }) => {
   await page.addInitScript(MOCK_MODEL_CONTEXT);
-  await loadDemo(page);
+  await loadInvestigation(page);
 
   const result = await executeTool(page, "propose_insight", {
-    title: "Refund spike",
-    body: "Refunds doubled quarter-over-quarter — worth a callout on the MRR trend.",
+    title: "Annotate the pricing change",
+    body: "The timing lines up with the Growth-plan renewal spike.",
     severity: "warn",
     tileId: "demo_chart_mrr",
     suggestedAction: {
       kind: "add_annotation",
-      payload: { tileId: "demo_chart_mrr", text: "Refund spike here" },
+      payload: { tileId: "demo_chart_mrr", text: "Growth pricing changed here" },
     },
   });
   expect(result).toMatchObject({ ok: true, state: "proposed" });
 
-  const chip = page.getByTestId("insight-chip");
-  await expect(chip).toBeVisible();
-  await expect(chip).toContainText("Refund spike");
-  await expect(chip).toHaveAttribute("data-severity", "warn");
-
-  // Nothing is applied until the human accepts.
+  const rail = page.getByTestId("collaboration-rail");
+  await expect(rail.getByTestId("proposal-queue")).toContainText(
+    "Annotate the pricing change",
+  );
   await expect(page.getByTestId("tile-demo_chart_mrr")).not.toContainText(
-    "Refund spike here",
+    "Growth pricing changed here",
   );
 
-  await chip.getByTestId("accept-insight").click();
+  await rail.getByTestId("accept-rail-proposal").click();
   await expect(page.getByTestId("tile-demo_chart_mrr")).toContainText(
-    "Refund spike here",
+    "Growth pricing changed here",
   );
-  await expect(chip).toHaveCount(0);
+  await expect(rail.getByTestId("proposal-queue")).toHaveCount(0);
 
-  // The applied action went through the command layer: ⌘Z removes it.
   await page.keyboard.press("ControlOrMeta+z");
   await expect(page.getByTestId("tile-demo_chart_mrr")).not.toContainText(
-    "Refund spike here",
+    "Growth pricing changed here",
   );
-
-  // Dismiss path: chip disappears without touching the dashboard.
-  await executeTool(page, "propose_insight", {
-    title: "Card fees look high",
-    body: "Stripe fees are 3.1% of gross this month.",
-  });
-  const chip2 = page.getByTestId("insight-chip");
-  await expect(chip2).toBeVisible();
-  await chip2.getByTestId("dismiss-insight").click();
-  await expect(chip2).toHaveCount(0);
 });
 
-test("agent add_tile sends Kai's synthetic cursor flying to the tile", async ({
+test("agent add_tile sends the neutral Agent cursor to the changed tile", async ({
   page,
 }) => {
   await page.addInitScript(MOCK_MODEL_CONTEXT);
-  await loadDemo(page);
+  await loadInvestigation(page);
 
   await expect(page.getByTestId("agent-cursor")).toHaveCount(0);
-
   const result = await executeTool(page, "add_tile", {
     type: "kpi",
     title: "Agent KPI",
@@ -168,5 +187,5 @@ test("agent add_tile sends Kai's synthetic cursor flying to the tile", async ({
 
   const cursor = page.getByTestId("agent-cursor");
   await expect(cursor).toBeVisible();
-  await expect(cursor).toContainText("Kai");
+  await expect(cursor).toContainText("Agent");
 });

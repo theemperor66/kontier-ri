@@ -1,6 +1,5 @@
 "use client";
 
-import { TrendDown, TrendUp } from "@phosphor-icons/react";
 import type { KpiSpec, Tile } from "@/lib/dashboard-store";
 import { useKpiSparkline, useTileData } from "@/lib/use-tile-data";
 import { formatDelta, formatValue, resolveRuleColor } from "@/lib/format";
@@ -8,11 +7,16 @@ import { cn } from "@/lib/utils";
 import { TileError } from "./tile-error";
 import { TileShimmer } from "./tile-shimmer";
 
-/** L5: stable tint index (0–3) from the tile id — same wash every render. */
-function tintIndex(id: string): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) | 0;
-  return Math.abs(h) % 4;
+/**
+ * Tint by POSITION in the page's KPI band — mint, lavender, plain surface,
+ * peach — so a row of KPIs repeats the design's field sequence instead of a
+ * hash-shuffled one. Index 2 is intentionally untinted (plain card).
+ */
+export const KPI_TINTS = ["mint", "lav", "none", "peach"] as const;
+
+export function tintClass(position: number): string | null {
+  const tint = KPI_TINTS[position % KPI_TINTS.length];
+  return tint === "none" ? null : `kpi-tint-${tint}`;
 }
 
 function firstNumber(v: unknown): number | null {
@@ -43,10 +47,19 @@ function sparkPaths(points: number[]): { line: string; area: string } {
   return { line, area };
 }
 
+/** Delta ink: up is --ok, down is --danger, flat stays muted (design). */
+const DELTA_INK: Record<"up" | "down" | "flat", string> = {
+  up: "var(--ok)",
+  down: "var(--danger)",
+  flat: "var(--ink-muted)",
+};
+
 /**
- * KPI v2 (A3): display number on the Kontier type scale, ▲▼ delta chip with
- * success/destructive semantics, and a trailing-12-period sparkline underlay
- * when the measure has temporal history (graceful skip otherwise).
+ * KPI tile (design): bottom-aligned value at clamp(22px,15cqi,34px)/600/-.03em
+ * over a restrained delta row — colored delta + muted comparison note. The
+ * trailing-period sparkline stays as a faint underlay when the measure has
+ * temporal history (graceful skip otherwise). The card tint itself is
+ * applied by TileFrame (.kpi-tint-*), matching the design's flat fields.
  */
 export function KpiTile({ tile }: { tile: Tile }) {
   const spec = tile.spec as KpiSpec;
@@ -72,78 +85,70 @@ export function KpiTile({ tile }: { tile: Tile }) {
       : spark && spark.length >= 2
         ? formatDelta(spark[spark.length - 1], spark[spark.length - 2])
         : null;
+  const comparisonNote =
+    spec.compare || prevIdx >= 0 ? "vs previous period" : "vs prior period";
 
   // Conditional formatting: first matching rule colors the value.
   const ruleColor = resolveRuleColor(value, spec.rules);
   const paths = spark && spark.length >= 3 ? sparkPaths(spark) : null;
 
   return (
-    <div
-      className={cn(
-        "relative flex h-full flex-col justify-center px-1",
-        paths && "pb-4",
-      )}
-    >
-      {/* L5: Kontier tint wash — soft gradient per KPI (light only via CSS;
-          bleeds to the card edges, clipped by the tile frame). */}
-      <div
-        aria-hidden
-        className={cn(
-          "pointer-events-none absolute -bottom-3 -left-3 -right-3 -top-10",
-          `kpi-tint-${tintIndex(tile.id)}`,
-        )}
-      />
+    // container-type: the value scales with the TILE width (15cqi), exactly
+    // as the design specifies.
+    <div className="relative flex h-full flex-col justify-end [container-type:inline-size]">
       {paths ? (
-        // L5: bottom-aligned clipped sparkline — an underlay capped at 40%
-        // of the card, never colliding with the delta chip above it.
+        // Bottom-aligned clipped sparkline — a quiet underlay capped at 40%
+        // of the card, never competing with the value above it.
         <div
           aria-hidden
-          className="pointer-events-none absolute -bottom-3 -left-3 -right-3 h-[40%] max-h-14 overflow-hidden"
+          className="pointer-events-none absolute -bottom-3 -left-4 -right-4 h-[40%] max-h-14 overflow-hidden"
         >
           <svg
             viewBox="0 0 100 32"
             preserveAspectRatio="none"
             className="h-full w-full"
           >
-            <path d={paths.area} fill="var(--chart-1)" opacity={0.08} />
+            <path d={paths.area} fill="var(--chart-1)" opacity={0.07} />
             <path
               d={paths.line}
               fill="none"
               stroke="var(--chart-1)"
               strokeWidth={1.25}
-              opacity={0.45}
+              opacity={0.35}
               vectorEffect="non-scaling-stroke"
             />
           </svg>
         </div>
       ) : null}
       <div
-        className="relative text-4xl font-semibold leading-tight tracking-tight tabular-nums"
+        className={cn(
+          "relative whitespace-nowrap text-[clamp(22px,15cqi,34px)] font-semibold leading-none tracking-[-0.03em] tabular-nums",
+        )}
         style={ruleColor ? { color: ruleColor } : undefined}
       >
         {formatValue(value, spec.format)}
       </div>
-      {delta ? (
-        <div className="relative mt-1.5 flex items-center gap-1.5 text-[11px]">
-          <span
-            className={cn(
-              "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-semibold tabular-nums",
-              delta.direction === "up" &&
-                "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/10 dark:text-emerald-400",
-              delta.direction === "down" && "bg-destructive/10 text-destructive",
-              delta.direction === "flat" && "bg-muted text-muted-foreground",
-            )}
-          >
-            {delta.direction === "up" ? (
-              <TrendUp weight="bold" className="size-3" />
-            ) : delta.direction === "down" ? (
-              <TrendDown weight="bold" className="size-3" />
-            ) : null}
-            {delta.text}
+      {/* Every KPI keeps this row so a KPI band shares one value baseline and
+          one delta baseline (design). Without a comparison it says so. */}
+      <div className="relative mt-2 flex h-[18px] items-baseline gap-1.5 text-[13px] leading-tight">
+        {delta ? (
+          <>
+            <span
+              className="font-medium tabular-nums"
+              style={{ color: DELTA_INK[delta.direction] }}
+            >
+              {delta.text}
+            </span>
+            <span className="truncate text-muted-foreground">
+              {comparisonNote}
+            </span>
+          </>
+        ) : (
+          <span className="truncate text-muted-foreground">
+            no comparison period
           </span>
-          <span className="text-muted-foreground">vs prev period</span>
-        </div>
-      ) : null}
+        )}
+      </div>
     </div>
   );
 }

@@ -23,6 +23,27 @@ const MOCK_MODEL_CONTEXT = `
   });
 `;
 
+const FAILING_MODEL_CONTEXT = `
+  window.__registeredTools = new Map();
+  Object.defineProperty(document, "modelContext", {
+    configurable: true,
+    value: {
+      registerTool(tool, options) {
+        if (tool.name === "run_sql") {
+          return Promise.reject(new Error("Security policy denied run_sql"));
+        }
+        window.__registeredTools.set(tool.name, tool);
+        if (options && options.signal) {
+          options.signal.addEventListener("abort", () => {
+            window.__registeredTools.delete(tool.name);
+          });
+        }
+        return Promise.resolve();
+      },
+    },
+  });
+`;
+
 async function loadDemo(page: Page) {
   await page.goto("/");
   // DuckDB-WASM boot + 5 CSV imports can take a while on first load.
@@ -65,23 +86,59 @@ test("WebMCP registers the static tool surface, +3 while a tile is selected", as
   await page.addInitScript(MOCK_MODEL_CONTEXT);
   await loadDemo(page);
 
-  // The static surface grows with the product (v1: 19; v2 adds pages/
-  // cross-filter/calc-field/view/export tools). Pin the floor + the pill
-  // staying in sync, and the exact +3 selection-scoped delta.
+  // The static surface includes the collaboration protocol. The status must
+  // reflect successful registration, not modelContext feature detection alone.
   const toolCount = () =>
     page.evaluate(
       () =>
         (window as never as { __registeredTools: Map<string, unknown> })
           .__registeredTools.size,
     );
-  await expect.poll(toolCount).toBeGreaterThanOrEqual(19);
+  await expect.poll(toolCount).toBe(40);
   const staticCount = await toolCount();
-  await expect(page.getByTestId("webmcp-status")).toContainText(
-    `${staticCount} tools`,
-  );
+  const status = page.getByTestId("webmcp-status");
+  await expect(status).toContainText("Agent ready");
+  await expect(status).toHaveAttribute("data-ready-count", String(staticCount));
 
   await page.locator("[data-tile-type=kpi]").first().click();
   await expect.poll(toolCount).toBe(staticCount + 3);
+  await expect(status).toHaveAttribute("data-ready-count", String(staticCount + 3));
+});
+
+test("tools register when a WebMCP host arrives after hydration", async ({ page }) => {
+  await page.goto("/");
+  const status = page.getByTestId("webmcp-status");
+  await expect(status).toContainText("Connect agent");
+  await page.evaluate(() => {
+    const registered = new Map<string, unknown>();
+    (window as never as { __registeredTools: Map<string, unknown> }).__registeredTools =
+      registered;
+    Object.defineProperty(document, "modelContext", {
+      configurable: true,
+      value: {
+        registerTool(tool: { name: string }, options?: { signal?: AbortSignal }) {
+          registered.set(tool.name, tool);
+          options?.signal?.addEventListener("abort", () => registered.delete(tool.name));
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  await expect(status).toContainText("Agent ready", { timeout: 10_000 });
+  await expect(status).toHaveAttribute("data-ready-count", "40");
+});
+
+test("registration failures are visible instead of reporting a false ready state", async ({
+  page,
+}) => {
+  await page.addInitScript(FAILING_MODEL_CONTEXT);
+  await page.goto("/");
+  const status = page.getByTestId("webmcp-status");
+  await expect(status).toContainText("Agent setup issue");
+  await status.hover();
+  await expect(
+    page.getByText("Security policy denied run_sql"),
+  ).toBeVisible();
 });
 
 test("agent add_tile shows attribution chip and activity entry; undo removes it", async ({
@@ -114,7 +171,7 @@ test("agent add_tile shows attribution chip and activity entry; undo removes it"
 
   // Activity feed logs the agent command (lives in the ••• overflow menu).
   await page.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Toggle activity feed" }).click();
+  await page.getByRole("menuitem", { name: "Activity feed" }).click();
   await expect(page.getByTestId("activity-feed")).toContainText('Added kpi tile "Agent KPI"');
 
   // Cmd+Z undoes the agent's change.

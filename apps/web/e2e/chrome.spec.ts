@@ -35,75 +35,59 @@ async function loadDemo(page: Page) {
   await expect(page.locator("[data-tile-type]")).toHaveCount(8);
 }
 
-test("top bar groups: Share menu, overflow menu, Escape + outside click close", async ({
+test("top bar: overflow menu holds every non-drawn action; Escape restores focus", async ({
   page,
 }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (err) => pageErrors.push(String(err)));
   await waitReady(page);
 
-  // Share ▾ groups link/PNG/JSON.
-  await page.getByTestId("share-menu").click();
-  const shareMenu = page.getByRole("menu", { name: "Share" });
-  await expect(shareMenu).toBeVisible();
-  await expect(
-    shareMenu.getByRole("menuitem", { name: "Copy share link" }),
-  ).toBeVisible();
-  await expect(
-    shareMenu.getByRole("menuitem", { name: "Export as PNG" }),
-  ).toBeVisible();
-  await expect(
-    shareMenu.getByRole("menuitem", { name: "Export as JSON" }),
-  ).toBeVisible();
-
-  // Escape closes and restores focus to the trigger.
-  await page.keyboard.press("Escape");
-  await expect(shareMenu).toHaveCount(0);
-  await expect(page.getByTestId("share-menu")).toBeFocused();
-
-  // Overflow ••• holds upload / dashboards / presentation / theme / activity.
+  // Every action the design does not draw lives in one overflow menu.
   await page.getByRole("button", { name: "More actions" }).click();
   const moreMenu = page.getByRole("menu", { name: "More actions" });
   await expect(moreMenu).toBeVisible();
   for (const name of [
-    "Upload data",
+    "Copy share link",
+    "Export as PNG",
+    "Export as JSON",
+    "Upload CSV / Parquet",
     "Manage dashboards",
     "Presentation mode",
-    "Toggle theme",
-    "Toggle activity feed",
+    "Activity feed",
   ]) {
     await expect(moreMenu.getByRole("menuitem", { name })).toBeVisible();
   }
 
-  // Outside click closes (far-left canvas padding — nothing interactive).
-  await page.mouse.click(30, 300);
+  // Escape closes and restores focus to the trigger.
+  await page.keyboard.press("Escape");
   await expect(moreMenu).toHaveCount(0);
+  await expect(page.getByTestId("more-actions")).toBeFocused();
 
-  // Activity feed opens from the overflow menu.
-  await page.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Toggle activity feed" }).click();
+  // Activity opens the agent panel on its Activity tab.
+  await page.getByTestId("more-actions").click();
+  await page.getByRole("menuitem", { name: "Activity feed" }).click();
+  await expect(page.getByTestId("collaboration-rail")).toHaveAttribute(
+    "aria-hidden",
+    "false",
+  );
   await expect(page.getByTestId("activity-feed")).toBeVisible();
 
   expect(pageErrors).toEqual([]);
 });
 
-test("theme toggles from the overflow menu without flash-of-error; class flips", async ({
+test("theme toggles from the top bar without flash-of-error; class flips", async ({
   page,
 }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (err) => pageErrors.push(String(err)));
   await waitReady(page);
 
-  await expect(page.locator("html")).toHaveClass(/dark/);
-  await page.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Toggle theme" }).click();
-  await expect(page.locator("html")).not.toHaveClass(/dark/, {
-    timeout: 5_000,
-  });
-  // And back.
-  await page.getByRole("button", { name: "More actions" }).click();
-  await page.getByRole("menuitem", { name: "Toggle theme" }).click();
+  // Light is the product default; the toggle flips to dark and back.
+  await expect(page.locator("html")).not.toHaveClass(/dark/);
+  await page.getByRole("button", { name: "Toggle theme" }).click();
   await expect(page.locator("html")).toHaveClass(/dark/, { timeout: 5_000 });
+  await page.getByRole("button", { name: "Toggle theme" }).click();
+  await expect(page.locator("html")).not.toHaveClass(/dark/, { timeout: 5_000 });
 
   expect(pageErrors).toEqual([]);
 });
@@ -135,7 +119,7 @@ test("aria-live announcer narrates agent tile adds", async ({ page }) => {
   });
   expect(result).toMatchObject({ ok: true });
 
-  await expect(announcer).toContainText('Kai added kpi tile "Announced KPI"');
+  await expect(announcer).toContainText('Agent added kpi tile "Announced KPI"');
 });
 
 test("drop compaction packs a tile upward; alignment guides show while dragging", async ({
@@ -160,7 +144,9 @@ test("drop compaction packs a tile upward; alignment guides show while dragging"
   const handle = tile.locator(".cursor-grab").first();
   const hb = await handle.boundingBox();
   expect(hb).not.toBeNull();
-  const startX = hb!.x + hb!.width / 2;
+  // Grab the title area: the right of the header holds the tile actions,
+  // which own their own pointer events.
+  const startX = hb!.x + 24;
   const startY = hb!.y + hb!.height / 2;
   await page.mouse.move(startX, startY);
   await page.mouse.down();
