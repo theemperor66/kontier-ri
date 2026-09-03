@@ -11,3 +11,11 @@ next-env.d.ts
 # build-time copy of duckdb-wasm bundles (scripts/copy-duckdb.mjs)
 apps/web/public/duckdb/
 apps/web/out/
+
+# Design reference extract + review artifacts (local only).
+# .impeccable/design.json is the DESIGN.md sidecar and IS tracked.
+.design-ref/
+.impeccable/*
+!.impeccable/design.json
+apps/web/.impeccable/
+apps/web/test-results/

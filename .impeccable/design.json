@@ -1,0 +1,300 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-03T19:57:10.508927+00:00",
+  "title": "Design System: Kontier RI",
+  "extensions": {
+    "colorMeta": {
+      "agent-indigo": {
+        "role": "primary",
+        "displayName": "Agent Indigo",
+        "canonical": "#3d4fe0",
+        "tonalRamp": [
+          "#2a3699",
+          "#3d4fe0",
+          "#7b8af5",
+          "#c9cff7",
+          "#eef0fd"
+        ],
+        "dark": "#7b8af5"
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Grey-Blue Canvas",
+        "canonical": "#f5f6fa",
+        "dark": "#0b0e1a"
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Card Surface",
+        "canonical": "#ffffff",
+        "dark": "#141829"
+      },
+      "surface-sunken": {
+        "role": "neutral",
+        "displayName": "Sunken Surface",
+        "canonical": "#f1f2f7",
+        "dark": "#1b2036"
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e6e8ef",
+        "dark": "rgba(255,255,255,0.08)"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#161b2e",
+        "dark": "#eef0f6"
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#646b7d",
+        "dark": "#a0a6ba",
+        "contrast": "4.62:1 on white, 4.6:1 on lavender"
+      },
+      "ink-faint": {
+        "role": "neutral",
+        "displayName": "Faint Ink",
+        "canonical": "#626a82",
+        "dark": "#83899b",
+        "contrast": "4.67:1 on white, 4.6:1 on the metric fields"
+      },
+      "navy-rail": {
+        "role": "neutral",
+        "displayName": "Navy Rail",
+        "canonical": "#0f1426",
+        "dark": "#0b0e1a"
+      },
+      "state-ok": {
+        "role": "tertiary",
+        "displayName": "Ledger Green",
+        "canonical": "#18794e",
+        "dark": "#3dc98a"
+      },
+      "state-warn": {
+        "role": "tertiary",
+        "displayName": "Amber Notice",
+        "canonical": "#995c12",
+        "dark": "#f0a43a"
+      },
+      "state-danger": {
+        "role": "tertiary",
+        "displayName": "Loss Red",
+        "canonical": "#c92c2c",
+        "dark": "#f06a6a"
+      },
+      "field-mint": {
+        "role": "secondary",
+        "displayName": "Mint Field",
+        "canonical": "#e6f6ef",
+        "dark": "rgba(61,201,138,0.1)"
+      },
+      "field-lavender": {
+        "role": "secondary",
+        "displayName": "Lavender Field",
+        "canonical": "#edeefb",
+        "dark": "rgba(123,138,245,0.12)"
+      },
+      "field-peach": {
+        "role": "secondary",
+        "displayName": "Peach Field",
+        "canonical": "#fdefdc",
+        "dark": "rgba(240,164,58,0.1)"
+      }
+    },
+    "typographyMeta": {
+      "page-title": {
+        "displayName": "Page title",
+        "purpose": "One per surface: the report or workspace name."
+      },
+      "metric": {
+        "displayName": "Metric",
+        "purpose": "KPI values; scales with the tile via container queries (15cqi)."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "12px evidence lines: tile sub-lines, table headers, timestamps."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Tool names, SQL and measure formulas only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "card",
+        "value": "0 1px 2px rgba(22,27,46,.04), 0 6px 20px -10px rgba(22,27,46,.14)",
+        "purpose": "Every surface above the canvas. Dark: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -12px rgba(0,0,0,.6)."
+      },
+      {
+        "name": "tile-selected",
+        "value": "0 0 0 3px var(--accent-soft), var(--shadow-card)",
+        "purpose": "Selection halo, paired with an accent-mid border."
+      },
+      {
+        "name": "tile-dragging",
+        "value": "0 24px 48px -16px rgba(22,27,46,.35)",
+        "purpose": "Only while a tile is under the pointer."
+      }
+    ],
+    "motion": [
+      {
+        "name": "tile-settle",
+        "value": "cubic-bezier(0.22,1,0.36,1) 250ms",
+        "purpose": "Grid position and size changes after a drop."
+      },
+      {
+        "name": "panel-slide",
+        "value": "ease-out 200ms",
+        "purpose": "Rail and agent-panel entry on small screens."
+      },
+      {
+        "name": "theme-crossfade",
+        "value": "cubic-bezier(0.4,0,0.2,1) 240ms",
+        "purpose": "View-transition theme swap; falls back to a color-only tween."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation-duration: 0.01ms",
+        "purpose": "prefers-reduced-motion collapses every entrance and flight."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stacked-canvas",
+        "value": "720px",
+        "purpose": "Below this canvas width the editor becomes a stacked review surface."
+      },
+      {
+        "name": "kpi-pair",
+        "value": "480px",
+        "purpose": "KPI tiles pair up above this width in the stacked layout."
+      },
+      {
+        "name": "lg",
+        "value": "1024px",
+        "purpose": "Rail, field pane and agent panel become permanent columns."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Approve, share brief, add to report.",
+      "html": "<button class=\"ds-btn-primary\">Approve</button>",
+      "css": ".ds-btn-primary{background:var(--accent-strong,#3d4fe0);color:#fff;height:36px;padding:0 16px;border:0;border-radius:9.6px;font:500 14px/1 'DM Sans',ui-sans-serif,system-ui,sans-serif;cursor:pointer;transition:opacity .15s}.ds-btn-primary:hover{opacity:.9}.ds-btn-primary:focus-visible{outline:2px solid var(--accent-strong,#3d4fe0);outline-offset:2px}"
+    },
+    {
+      "name": "Scope Chip (agent-set)",
+      "kind": "chip",
+      "refersTo": "chip-scope-agent",
+      "description": "A filter an agent set, with its by-line and a dismiss control.",
+      "html": "<span class=\"ds-chip-agent\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 256 256\" fill=\"currentColor\"><path d=\"M200 48H56a8 8 0 0 0-6 13l58 65v54a8 8 0 0 0 4 7l32 18a8 8 0 0 0 12-7v-72l58-65a8 8 0 0 0-6-13Z\"/></svg>plan_id = plan_growth<em>by agent</em><b>\u00d7</b></span>",
+      "css": ".ds-chip-agent{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 12px;border:1px solid var(--accent-mid,#c9cff7);background:var(--accent-soft,#eef0fd);color:var(--accent-strong,#3d4fe0);border-radius:9.6px;font:400 13.5px/1 'DM Sans',ui-sans-serif,sans-serif}.ds-chip-agent em{font-style:normal;font-size:11px;opacity:.7}.ds-chip-agent b{font-weight:400;cursor:pointer;opacity:.8}.ds-chip-agent b:hover{opacity:1}"
+    },
+    {
+      "name": "KPI Tile (tinted)",
+      "kind": "card",
+      "refersTo": "tile-kpi-mint",
+      "description": "A metric field: flat colour, no border, no shadow, delta row always present.",
+      "html": "<div class=\"ds-kpi\"><span class=\"ds-kpi-title\">MRR (paid)</span><span class=\"ds-kpi-sub\">invoices</span><span class=\"ds-kpi-value\">\u20ac83,951</span><span class=\"ds-kpi-delta\"><b>-0.4%</b> vs previous period</span></div>",
+      "css": ".ds-kpi{display:flex;flex-direction:column;justify-content:flex-end;gap:2px;width:260px;height:150px;padding:14px 16px;border-radius:12px;background:var(--mint,#e6f6ef);color:var(--ink,#161b2e);font-family:'DM Sans',ui-sans-serif,sans-serif;font-variant-numeric:tabular-nums;container-type:inline-size}.ds-kpi-title{font-weight:500;font-size:14px;color:var(--ink-muted,#646b7d)}.ds-kpi-sub{font-size:12px;color:var(--faint,#626a82)}.ds-kpi-value{margin-top:auto;font-weight:600;font-size:clamp(22px,15cqi,34px);letter-spacing:-.03em;line-height:1}.ds-kpi-delta{margin-top:8px;font-size:13px;color:var(--ink-muted,#646b7d)}.ds-kpi-delta b{color:var(--danger,#c92c2c);font-weight:500}"
+    },
+    {
+      "name": "Report Card",
+      "kind": "card",
+      "refersTo": "tile-card",
+      "description": "Every surface above the canvas: tiles, panel cards, workspace cards.",
+      "html": "<div class=\"ds-card\"><span class=\"ds-card-title\">MRR by month (EUR)</span><span class=\"ds-card-sub\">By month \u00b7 invoices</span></div>",
+      "css": ".ds-card{display:flex;flex-direction:column;gap:2px;width:320px;padding:14px 16px 16px;border:1px solid var(--line,#e6e8ef);border-radius:12px;background:var(--surface,#fff);box-shadow:0 1px 2px rgba(22,27,46,.04),0 6px 20px -10px rgba(22,27,46,.14);font-family:'DM Sans',ui-sans-serif,sans-serif}.ds-card-title{font-weight:500;font-size:14px;color:var(--ink,#161b2e)}.ds-card-sub{font-size:12px;color:var(--faint,#626a82)}"
+    },
+    {
+      "name": "In-tile Proposal Strip",
+      "kind": "custom",
+      "refersTo": "agent-pill",
+      "description": "A pending agent proposal on the tile it would change.",
+      "html": "<div class=\"ds-proposal\"><i></i><p><b>Agent suggests:</b> Annotate the Growth-plan price change</p><button class=\"ds-proposal-ok\">Approve</button><button class=\"ds-proposal-no\">Reject</button></div>",
+      "css": ".ds-proposal{display:flex;align-items:center;gap:10px;width:420px;padding:8px 12px;border:1px solid var(--accent-mid,#c9cff7);border-radius:10px;background:var(--surface,#fff);box-shadow:0 1px 2px rgba(22,27,46,.04),0 6px 20px -10px rgba(22,27,46,.14);font-family:'DM Sans',ui-sans-serif,sans-serif}.ds-proposal i{width:8px;height:8px;border-radius:999px;background:var(--accent-strong,#3d4fe0);flex:none}.ds-proposal p{margin:0;flex:1;font-size:12.5px;line-height:1.35;color:var(--ink,#161b2e)}.ds-proposal b{color:var(--accent-strong,#3d4fe0);font-weight:500}.ds-proposal-ok{height:26px;padding:0 11px;border:0;border-radius:7px;background:var(--accent-strong,#3d4fe0);color:#fff;font:500 12px 'DM Sans',sans-serif;cursor:pointer}.ds-proposal-no{height:26px;padding:0 10px;border:1px solid var(--line-2,#d3d7e3);border-radius:7px;background:transparent;color:var(--ink-muted,#646b7d);font:400 12px 'DM Sans',sans-serif;cursor:pointer}"
+    },
+    {
+      "name": "Rail Item",
+      "kind": "nav",
+      "refersTo": "rail-item-active",
+      "description": "Navigation rail entry with its active state and count badge.",
+      "html": "<nav class=\"ds-rail\"><button class=\"ds-rail-item is-active\">Reports</button><button class=\"ds-rail-item\">Approvals<span>2</span></button></nav>",
+      "css": ".ds-rail{display:flex;flex-direction:column;gap:2px;width:224px;padding:8px;background:var(--nav,#0f1426);font-family:'DM Sans',ui-sans-serif,sans-serif}.ds-rail-item{display:flex;align-items:center;gap:12px;height:38px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:rgba(255,255,255,.7);font:400 14px 'DM Sans',sans-serif;text-align:left;cursor:pointer}.ds-rail-item:hover{background:rgba(255,255,255,.06);color:#fff}.ds-rail-item.is-active{background:rgba(255,255,255,.1);color:#fff}.ds-rail-item span{margin-left:auto;padding:1px 7px;border-radius:999px;background:var(--accent-strong,#3d4fe0);color:#fff;font-weight:600;font-size:11px}"
+    },
+    {
+      "name": "Page Tab",
+      "kind": "nav",
+      "refersTo": "button-outline",
+      "description": "Report page tabs: underline for active, never a filled pill.",
+      "html": "<div class=\"ds-tabs\"><span class=\"ds-tab is-active\">Overview</span><span class=\"ds-tab\">Growth drivers</span></div>",
+      "css": ".ds-tabs{display:flex;gap:2px;border-bottom:1px solid var(--line,#e6e8ef);font-family:'DM Sans',ui-sans-serif,sans-serif}.ds-tab{padding:8px 12px;margin-bottom:-1px;border-bottom:2px solid transparent;color:var(--ink-muted,#646b7d);font-size:13.5px;cursor:pointer}.ds-tab:hover{color:var(--ink,#161b2e)}.ds-tab.is-active{border-bottom-color:var(--accent-strong,#3d4fe0);color:var(--ink,#161b2e);font-weight:500}"
+    },
+    {
+      "name": "Field Row",
+      "kind": "custom",
+      "refersTo": "agent-pill",
+      "description": "Data-rail field: role glyph, name, draggable to the canvas.",
+      "html": "<div class=\"ds-field\" draggable=\"true\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 256 256\" fill=\"currentColor\"><path d=\"M224 88h-51l6-35a8 8 0 0 0-16-2l-6 37h-45l6-35a8 8 0 0 0-16-2l-6 37H32a8 8 0 0 0 0 16h60l-8 48H32a8 8 0 0 0 0 16h49l-6 35a8 8 0 0 0 16 2l6-37h45l-6 35a8 8 0 0 0 16 2l6-37h56a8 8 0 0 0 0-16h-53l8-48h53a8 8 0 0 0 0-16Zm-83 64h-45l8-48h45Z\"/></svg><span>amount_eur</span></div>",
+      "css": ".ds-field{display:flex;align-items:center;gap:6px;width:200px;padding:4px 8px;border-radius:6px;color:var(--ink,#161b2e);font:400 12.5px 'DM Sans',ui-sans-serif,sans-serif;cursor:grab}.ds-field svg{color:var(--accent-strong,#3d4fe0);flex:none}.ds-field:hover{background:var(--surface-2,#f1f2f7)}.ds-field:focus-visible{outline:2px solid var(--accent-strong,#3d4fe0);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Operating Table",
+    "overview": "Kontier RI is a room where two kinds of hands work one artifact. The report is the shared surface, so the design keeps the work in the middle and pushes the apparatus to the edges: a navy rail for where you are, a light canvas for what is true, one agent column for what is proposed. The system is quiet by construction and precise by preference: chrome is hairlines and flat fields, numbers are the loudest thing on screen, and the only saturated ink means agency. Depth is tonal \u2014 a white card on a grey-blue canvas with a soft two-layer shadow, or a flat colour field with no border at all.",
+    "keyCharacteristics": [
+      "One family (DM Sans) with tabular numerals; mono only for SQL and formulas.",
+      "One saturated accent, reserved for agency and primary action.",
+      "Flat colour fields for metrics; hairline-and-shadow cards for everything else.",
+      "A 12-column, 64px-row canvas on a 24px dot field.",
+      "Status colour is semantic only: ok, warn, danger."
+    ],
+    "rules": [
+      {
+        "name": "The One Agency Ink Rule",
+        "body": "Indigo means an agent acted or a human must act. It never decorates, and status colour never means agency.",
+        "section": "colors"
+      },
+      {
+        "name": "The Measured Contrast Rule",
+        "body": "Every small-text token clears 4.5:1 against white, the canvas, the sunken surface and all three metric fields. Ink is darkened to reach the ratio; opacity is never stacked on muted text.",
+        "section": "colors"
+      },
+      {
+        "name": "The Semantic Series Rule",
+        "body": "Chart series use the indigo ramp. A series turns danger only when the measure itself means loss.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two-Line Title Rule",
+        "body": "Tile titles wrap to two lines rather than truncating; the exact spec summary lives in the header's hover title.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Elevation Device Rule",
+        "body": "A surface declares depth once: hairline plus card shadow, or flat colour field. Never a border under a heavy shadow, never a shadow on a tinted field.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do reserve indigo for agency and primary action, and keep status colour semantic.",
+      "Do apply KPI tints by position in the band (mint, lavender, plain, peach).",
+      "Do give every KPI a delta line so value and delta baselines align across the row.",
+      "Do derive tile sub-lines, chips and lineage from real state, and label synthetic demo data.",
+      "Do keep agent objects reviewable in place: the tile carries the proposal, the panel carries the queue."
+    ],
+    "donts": [
+      "Don't put a border under a heavy shadow, or any shadow on a tinted metric field.",
+      "Don't introduce a second type family.",
+      "Don't fill the active page tab; the underline is the active state.",
+      "Don't shrink the 12-column editor onto a phone \u2014 stack it and disable spatial editing.",
+      "Don't render agent presence from timers, animation or persona."
+    ]
+  }
+}
