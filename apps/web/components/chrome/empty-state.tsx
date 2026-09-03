@@ -65,14 +65,24 @@ export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
       data-canvas-root
       className="min-h-0 flex-1 overflow-y-auto px-1 pb-8 pt-1.5"
     >
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-3 pb-5">
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3 pb-5">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className="text-[30px] font-semibold leading-[1.1] tracking-[-0.02em]">
             Start an investigation
           </h1>
-          <p className="max-w-[62ch] text-[15px] text-muted-foreground">
-            Point at a revenue signal and resolve it with your browser agent on
-            one canvas. SQL runs in this tab; raw rows never leave it.
+          <p className="max-w-[64ch] text-[15px] text-muted-foreground">
+            The analytics workspace of the{" "}
+            <a
+              href="https://kontier.eu"
+              target="_blank"
+              rel="noreferrer"
+              className="underline decoration-line-2 underline-offset-2 hover:text-foreground"
+            >
+              Kontier
+            </a>{" "}
+            billing platform. Point at a revenue signal and resolve it with your
+            browser agent on one canvas — the query engine runs in this tab, so
+            raw rows never leave it.
           </p>
         </div>
         <span className="ml-auto flex h-[38px] shrink-0 items-center gap-2 rounded-[9px] border border-line bg-card px-3 text-[13px] text-muted-foreground">
@@ -113,6 +123,19 @@ export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
             >
               <UploadSimple className="size-4" /> Use my data
             </Button>
+            {/* The scale proof used to be a grey text link under a stat block
+                that advertised 16,160 rows. It is the strongest single claim
+                this product can make, so it gets a real control. */}
+            <Button
+              variant="outline"
+              className="h-10"
+              data-testid="load-scale-demo"
+              disabled={status !== "ready" || scaleDemo.loading}
+              onClick={scaleDemo.load}
+            >
+              <Database className="size-4" />
+              {scaleDemo.loading ? "Counting 100M rows…" : "Query 100M rows"}
+            </Button>
             <input
               ref={fileRef}
               type="file"
@@ -141,9 +164,12 @@ export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
 
           <dl className="mt-6 grid grid-cols-3 gap-3 border-t border-line pt-4">
             {[
-              ["5 tables", "plans, customers, subscriptions, invoices, charges"],
-              ["16,160 rows", "loaded into DuckDB inside this tab"],
-              ["2 pages", "overview and growth drivers"],
+              ["100M rows", "queried live over HTTP in this tab — no server"],
+              ["0 bytes", "of your data ever leave the browser"],
+              [
+                agentReady ? `${readyCount} tools` : "46 tools",
+                "registered for your agent over WebMCP",
+              ],
             ].map(([value, note]) => (
               <div key={value}>
                 <dt className="text-[15px] font-semibold tracking-[-0.01em]">{value}</dt>
@@ -164,16 +190,7 @@ export function EmptyState({ onLoadDemo }: { onLoadDemo: () => void }) {
             >
               <Layout className="size-3.5" /> Browse report templates
             </button>
-            <button
-              type="button"
-              data-testid="load-scale-demo"
-              disabled={status !== "ready" || scaleDemo.loading}
-              onClick={scaleDemo.load}
-              className="inline-flex cursor-pointer items-center gap-1.5 transition-colors hover:text-foreground disabled:opacity-50"
-            >
-              <Database className="size-3.5" />
-              {scaleDemo.loading ? "Counting 100M rows…" : "Query 100M rows live"}
-            </button>
+
             {!agentReady ? (
               <span className="inline-flex items-center gap-1.5">
                 <Plugs className="size-3.5" />

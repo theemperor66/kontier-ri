@@ -540,14 +540,17 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
   const buildTools: ToolDefinition[] = [
     tool({
       name: "add_tile",
+      // The per-type spec grammar lives in inputSchema, which is a union of
+      // the four tile schemas — the agent reads it there. Repeating it here
+      // pushed this description to 888 chars, well past the 500-char budget
+      // Chrome publishes for avoiding agent guardrails.
       description:
-        "Add a dashboard tile (lands on the ACTIVE page). spec by type — " +
-        'kpi: {dataset, sql | measure+agg, format: "currency"|"number"|"percent"|{style,currency?}, compare?: "prev_period", filters?, rules?}; ' +
-        'chart: {dataset, query: {sql} | {dims, measures: [{col, agg}], orderBy?, limit?, othersBucket?}, chartType: "line"|"bar"|"area"|"pie"|"scatter"|"combo"|"donut"|"hbar"|"stacked100"|"funnel"|"heatmap"|"radar", xKey, seriesKeys?, yKey?, series?, stacked?, legend?, color?, filters?, analytics?: {trendline?, referenceLine?: {value,label?}}, format?: {value?, y2?, rules?: [{op,value,color}]}}; ' +
-        "table: {dataset, sql, pageSize<=25, filters?, format?}; markdown: {content}. " +
-        "othersBucket (with limit + 1 dim) keeps top-N groups and buckets the rest into 'Other'. " +
-        "Measure cols may name calculated fields (list_calculated_fields). " +
-        "Layout is optional (12-column grid, auto-placed). Returns {tileId}.",
+        "Add a tile to the ACTIVE page. `spec` must match `type`: see the " +
+        "inputSchema union for kpi, chart, table and markdown. Measure " +
+        "columns may name calculated fields (list_calculated_fields). " +
+        "othersBucket, with limit and one dim, keeps the top-N groups and " +
+        "buckets the rest as 'Other'. Layout is optional — a 12-column grid, " +
+        "auto-placed when omitted. Returns {tileId}.",
       inputSchema: addTileInput,
       execute: (input) => {
         const parsed = tileSpecSchemas[input.type].safeParse(input.spec);
@@ -1341,13 +1344,12 @@ export function buildStaticTools(ctx: ToolContext): ToolDefinition[] {
       name: "propose_change_set",
       description:
         "Group 1–8 RELATED edits into ONE reviewable change set instead of " +
-        "applying them one by one: {title, rationale, actions: [{kind, " +
-        "payload, note?}]}. kind is add_tile|update_tile|remove_tile|" +
-        "add_annotation|set_filter|set_tile_filters and each payload matches " +
-        "the tool of the same name. Give every action a short note saying why " +
-        "THAT edit is needed. Nothing changes until the human applies the set; " +
-        "they can drop individual actions, and applying is one undo step. " +
-        "Read the outcome back through get_work_context.",
+        "applying them one by one. Each action's kind names a tool " +
+        "(add_tile, update_tile, remove_tile, add_annotation, set_filter, " +
+        "set_tile_filters) and its payload matches that tool. Give every " +
+        "action a note saying why THAT edit is needed. Nothing changes until " +
+        "the human applies the set; they can drop individual actions, and " +
+        "applying is one undo step. Read the outcome via get_work_context.",
       inputSchema: proposeChangeSetInput,
       execute: (input) => {
         const result = state().proposeChangeSet(input as ProposeChangeSetInput);
