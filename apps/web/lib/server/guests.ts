@@ -38,14 +38,22 @@ export const GUEST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * safety measure, it is an outage, so the default is generous and the value
  * is configurable for a deployment that wants it tighter.
  */
-export const GUEST_CREATE_LIMIT = readLimit("KONTIER_GUEST_CREATE_LIMIT", 300);
+export const DEFAULT_GUEST_CREATE_LIMIT = 300;
 export const GUEST_CREATE_WINDOW_MS = 60 * 60 * 1000;
 
-function readLimit(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
+/**
+ * Read at call time, not at import. A module constant would freeze whatever
+ * the environment happened to hold when the file was first loaded, which
+ * makes the limit depend on import order and makes it untestable without
+ * reloading the module.
+ */
+export function guestCreateLimit(): number {
+  const raw = process.env.KONTIER_GUEST_CREATE_LIMIT?.trim();
+  if (!raw) return DEFAULT_GUEST_CREATE_LIMIT;
   const parsed = Number.parseInt(raw, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+  return Number.isInteger(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_GUEST_CREATE_LIMIT;
 }
 
 interface GuestEntry {
@@ -122,7 +130,7 @@ let window = { startedAt: 0, count: 0 };
 
 export function guestCreationAllowed(now = Date.now()): boolean {
   if (now - window.startedAt >= GUEST_CREATE_WINDOW_MS) return true;
-  return window.count < GUEST_CREATE_LIMIT;
+  return window.count < guestCreateLimit();
 }
 
 function recordCreation(now: number): void {

@@ -102,13 +102,28 @@ describe("creating a guest workspace", () => {
     expect(res.status).toBe(503);
   });
 
-  it("rate-limits creation", async () => {
+  it("rate-limits creation at the configured ceiling", async () => {
+    // The test sets the ceiling itself rather than inheriting whatever the
+    // ambient environment holds, which is why the limit is read per call.
+    process.env.KONTIER_GUEST_CREATE_LIMIT = "3";
     const { route, guests } = await load();
-    for (let i = 0; i < guests.GUEST_CREATE_LIMIT; i += 1) {
+    expect(guests.guestCreateLimit()).toBe(3);
+    for (let i = 0; i < 3; i += 1) {
       expect((await route.POST(post())).status).toBe(201);
     }
-    const res = await route.POST(post());
-    expect(res.status).toBe(429);
+    expect((await route.POST(post())).status).toBe(429);
+    delete process.env.KONTIER_GUEST_CREATE_LIMIT;
+  });
+
+  it("falls back to the default ceiling when the variable is absent or junk", async () => {
+    delete process.env.KONTIER_GUEST_CREATE_LIMIT;
+    const { guests } = await load();
+    expect(guests.guestCreateLimit()).toBe(guests.DEFAULT_GUEST_CREATE_LIMIT);
+    process.env.KONTIER_GUEST_CREATE_LIMIT = "not-a-number";
+    expect(guests.guestCreateLimit()).toBe(guests.DEFAULT_GUEST_CREATE_LIMIT);
+    process.env.KONTIER_GUEST_CREATE_LIMIT = "-5";
+    expect(guests.guestCreateLimit()).toBe(guests.DEFAULT_GUEST_CREATE_LIMIT);
+    delete process.env.KONTIER_GUEST_CREATE_LIMIT;
   });
 });
 
