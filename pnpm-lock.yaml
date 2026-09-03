@@ -16,6 +16,9 @@ importers:
       '@kontier-ri/studio':
         specifier: workspace:*
         version: link:../../packages/studio
+      '@kontier-ri/workspace':
+        specifier: workspace:*
+        version: link:../../packages/workspace
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -92,6 +95,9 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^4.1.2
+        version: 4.1.11(@types/node@25.9.5)(vite@8.2.2(@types/node@25.9.5)(jiti@2.7.0))
 
   packages/datasource:
     dependencies:
@@ -124,6 +130,15 @@ importers:
       react:
         specifier: ^19.2.4
         version: 19.2.8
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.2
+        version: 4.1.11(@types/node@25.9.5)(vite@8.2.2(@types/node@25.9.5)(jiti@2.7.0))
+
+  packages/workspace:
+    devDependencies:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
