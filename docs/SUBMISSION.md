@@ -1,238 +1,431 @@
-# Devpost Submission Kit
+# Kontier RI — Devpost submission (ready to paste)
+
+*Every number in this file was read from the code in this repository or from a
+live HTTP response on 2026-09-03. Nothing here is estimated.*
+
+---
 
 ## Project name
-Kontier RI — Revenue Investigation Workspace
 
-## Tagline
-Write a brief, point at the anomaly, approve the work: a browser agent
-investigates your revenue data on the same live dashboard, and nothing changes
-until you say yes.
+**Kontier RI — shared investigation workspace**
 
-## Text description (maps 1:1 to judging criteria)
+## Tagline (114 chars)
 
-**Why this use case is a strong fit for WebMCP (WebMCP Leverage).**
-Revenue investigation is a deep-UI problem. The question ("why did churn spike
-in March?") needs schema knowledge, SQL, chart construction and human judgment
-about which explanation counts. An agent clicking through a BI UI fails. A
-headless API removes the human from the loop. WebMCP puts the agent inside the
-same live document the human is looking at. Kontier RI registers 40 static
-tools from the page through `document.modelContext`, plus three small bundles
-that mount and unmount with the state of the work: 3 selection-scoped tools
-while a tile is selected, 2 while a change set waits for review
-(`revise_change_set`, `withdraw_change_set`), and 1 while a question waits
-(`withdraw_decision`) — up to 46 registered. Each bundle is a React component,
-so the names the agent can see describe what it can do right now. Every tool
-input is a zod v4 schema: `z.toJSONSchema()` produces the protocol `inputSchema` and
-`safeParse` re-validates the same shape inside `execute`, so the contract
-cannot drift. SQL runs in-page through DuckDB-WASM, so `run_sql` is a real
-analytics engine while raw rows never leave the tab.
+A shared investigation workspace where people and agents edit one live report:
+consent, attribution, one-key undo.
 
-**How it creates a better user experience (Execution).**
-The product implements a collaboration protocol, not a chat box. A human writes
-a brief. The agent calls `get_work_context` first and receives the brief, the
-plan, pending reviews, answered decisions, the human's live focus (selected
-tile, brushed range, cross-filter, recent edits), the last commands, and a
-four-rule working agreement. It publishes a plan with `present_plan` and ticks
-steps with `update_plan_step`. When something is genuinely ambiguous it calls
-`request_decision` with 2 to 5 options and an optional recommendation, and the
-human answers in the Approvals view. Findings arrive as `propose_insight`
-proposals with Approve and Reject buttons. **Nothing is applied until the human
-approves.** Approved actions run through the same command layer as human edits:
-attributed to the agent, logged, undoable, and blocked from overwriting any
-property the human touched in the last 10 minutes. Larger work arrives as a
-staged change set: `propose_change_set` groups 1 to 8 related edits with a
-reason per row, nothing runs on propose, the human skips the rows they do not
-want, and the approved rows land as ONE undo entry and ONE activity entry. A
-partial approval is recorded as `partially_applied` with the exact rows that
-ran, and a failure mid-apply restores the document and the history exactly.
-`complete_work` closes the session with a summary and outcomes. Completed
-sessions are kept in the browser and listed on Home as past investigations.
+## Thesis (one paragraph, for the top of the Devpost description)
 
-**What people and agents can do together that was difficult or impossible
-before (Potential Impact).**
-Human gestures become agent context, and agent output becomes reviewable
-product state. Brush a revenue dip, share a brief, and the agent reads that
-exact range, investigates with SQL, asks which definition of churn you want,
-and returns a drill-down tile and an annotation as one staged change set. You
-keep the rows you agree with. The result is not a chat transcript. It is an
-edited dashboard with an audit trail, a record of what you approved and what
-you dropped, and one-keystroke undo. Audience: SaaS operators, finance leads and revenue owners
-who need answers without waiting for a data team. Built by a billing-SaaS team
-(Kontier) as the future analytics engine of our product.
+Kontier RI is a shared investigation workspace. Several humans and several
+agents work the same live report at the same time, under one enforced
+human–agent contract: nothing changes without consent, every change is
+attributed, and one keystroke reverses it. The agent does not drive a chat
+sidebar. It registers WebMCP tools on the page and edits the same document the
+humans are looking at. Kontier RI is the analytics workspace of Kontier, a
+production multi-tenant billing platform, so the problem is one we hit in
+production. The public demo runs on deterministic synthetic billing data with
+the same shape.
 
-**How we implemented WebMCP.**
-`useWebMCPTool` is a React hook: it resolves `document.modelContext` (with a
-`navigator.modelContext` fallback), converts zod v4 to JSON Schema, re-validates
-input, tolerates hosts that call `execute(input)` without an options object, and
-unregisters through an `AbortController` on unmount. The same hook gives the
-adaptive toolbelt: `SelectedTileTools` and `PhaseScopedTools` are components
-that mount with a selection, a pending change set or an unanswered question,
-so their tools register and unregister with the work, and their descriptions
-name the live ids. It also reports a real
-registration lifecycle per tool (`unavailable`, `registering`, `ready`,
-`failed`), which is what the connection pill displays: "Agent ready" only when
-every expected tool registered, "Agent setup issue" with the failing tool names
-otherwise. If a host injects `modelContext` after hydration, the hook re-checks
-once per second and then registers. Read tools carry `readOnlyHint` and
-`untrustedContentHint`, because their results echo dataset values and human
-text. Monorepo: `packages/datasource` (DataSource interface + DuckDB-WASM),
-`packages/studio` (store, command layer, tools, hook), `apps/web` (Next.js 16
-shell, canvas, workspace views).
+---
 
-## Demo script (<3:00)
+## 1. WebMCP Leverage
 
-| t | Shot | Beat |
-|---|---|---|
-| 0:00–0:20 | The workspace: navy rail, light canvas, agent panel on the right | "This is a revenue investigation workspace. The dashboard is the shared context, not a chat window." |
-| 0:20–0:40 | Type the brief "Explain the March churn spike and show the evidence", press Share brief | "I give the work a finish line. The brief becomes a work session my agent can read." |
-| 0:40–1:05 | Agent calls `get_work_context`, then `present_plan`; steps tick over | "It orients first: the brief, my selection, my recent edits, and the working agreement. Then it publishes a plan and works in the open." |
-| 1:05–1:35 | A decision card appears with options; pick one and add a note | "When the answer depends on my judgment, it asks a structured question instead of guessing. My answer flows back on its next context read." |
-| 1:35–2:05 | A staged change set appears with one diff row per action; untick one row; press Approve; the tiles land with an agent chip; one Cmd+Z removes the whole set | "Bigger work arrives as one change set, not as edits. I read it as a diff, drop the row I do not want, and approve the rest. It goes through the same command layer as my own edits: attributed, logged, and undoable as a single step." |
-| 2:05–2:25 | Edit a title, then let the agent try to change it; conflict result | "It cannot overwrite what I just touched. Ten-minute protection. It has to ask." |
-| 2:25–2:45 | Approvals, Audit log, Data health lineage, Datasets | "Every governance surface reads live state. No fake refresh times, no invented owners." |
-| 2:45–3:00 | Status pill, repo, AGPL badge | "Forty tools, up to forty-six while work is open, real registration health, local DuckDB. AGPL open source." |
+> *"How thoroughly and skillfully does the project use WebMCP? Does the code
+> reflect genuine effort and a working, non-trivial implementation?"*
 
-## Submission form checklist
-- [ ] Devpost registration + team (user account)
-- [ ] Live URL — verified in the ChatGPT in-app browser AND Chrome 149+ with the flag
-- [ ] Repo URL github.com/theemperor66/kontier-ri — license visible in About ✓ (AGPL-3.0 detected)
-- [ ] Video: YouTube public, <3:00, audio demo, no third-party marks/music
-- [ ] Text description (above, trimmed to form limits)
-- [ ] Testing instructions: Chrome flag steps + ChatGPT browser steps + suggested prompts
-- [ ] No credentials needed (public app)
+The page registers **40 static tools**, plus three small bundles that mount and
+unmount with the state of the work: **3** while a tile is selected, **2** while
+a change set waits for review, **1** while a question waits for an answer.
+**46 tools at the maximum.** The lists are code, not prose:
+`STATIC_TOOL_NAMES`, `DYNAMIC_TOOL_NAMES`, `PROPOSAL_TOOL_NAMES` and
+`DECISION_TOOL_NAMES` in `packages/studio/src/webmcp/tools.ts`.
 
-## Pre-submit hardening
-- [x] Self-host duckdb-wasm bundles (drop the jsDelivr runtime dependency) —
-      copied to public/duckdb/ at build time, same-origin with a CDN fallback;
-      e2e asserts zero jsDelivr requests
-- [x] Honest registration health — per-tool status, visible failures, and an
-      e2e test that a failed registration never reports a ready state
-- [x] Late-host registration — an e2e test injects `modelContext` after
-      hydration and asserts the tools still register
-- [ ] Re-run a fresh-profile check of the live URL (cold cache): DuckDB boots,
-      the demo tiles render, and no CDN requests are made. The checker exists:
-      `VERIFY_URL=<live-url> node apps/web/scripts/verify-live.mjs`
-- [x] README, tool catalog and design spec rewritten for the investigation loop
-- [x] OG meta tags + favicon (judges share links)
-- [ ] R1 verified: dynamic tool mount/unmount inside the ChatGPT browser
-      (fallback ready: keep them always registered and error "no tile selected")
+This follows Chrome's own guidance rather than inventing a pattern. Chrome
+writes: *"static registration should be the default approach"* and *"Register
+tools when they're useful in a certain page state, then unregister when the
+tool is no longer usable."* Static is our default. The three dynamic bundles are
+React components: mounting registers, unmounting unregisters through an
+`AbortController`. Their descriptions are rebuilt on every mount and name the
+live change-set and decision ids, so the agent never guesses which proposal it
+is revising.
 
-## Live URL
-GitHub Pages: https://theemperor66.github.io/kontier-ri/ — deployed on every
-push to main via .github/workflows/deploy.yml (static export, basePath
-/kontier-ri). Root-path deploys need no env changes.
+**One schema per tool, used twice.** Each tool has one zod v4 schema.
+`z.toJSONSchema()` produces the protocol `inputSchema`, and the *same* schema
+re-validates the arguments with `safeParse` inside `execute`. The declared
+contract and the enforced contract cannot drift.
 
-## Voice-over script (verbatim, ~2:50 at normal pace)
+**Hints are declared on every tool, and a test holds the line.** 13 read tools
+declare `readOnlyHint: true` **and** `untrustedContentHint: true`, because their
+results echo dataset values, dashboard copy and human notes. The other 33
+declare `readOnlyHint: false` explicitly. Silence on a mutating tool is a
+missing declaration, not a neutral one, so
+`packages/studio/test/tool-hints.test.ts` fails the build if any tool declares
+nothing or declares the wrong hint.
 
-**[0:00 — the workspace, light canvas, agent panel open]**
-"This is Kontier RI: a revenue investigation workspace. On the left, the real
-navigation of a BI product. In the middle, a live dashboard. On the right, the
-agent panel. There is no chat window, because the dashboard is the conversation.
-The page registers forty WebMCP tools that any browser agent can call, and
-the data loads into DuckDB inside my browser. Raw rows never leave the page."
+**Chrome's character budgets are a test, not a hope.** Chrome publishes 30
+characters per tool name and parameter name, 500 per tool description, 150 per
+parameter description. `packages/studio/test/tool-budgets.test.ts` enforces all
+four, plus a 20-character floor so a description cannot be trimmed into
+uselessness. `add_tile` was 888 characters when that test was written.
 
-**[0:22 — type the brief, press Share brief]**
-"I start by giving the work a finish line: explain the March churn spike and
-show the evidence. That brief becomes a work session."
+**A tool call ledger, including calls the host rejected.** WebMCP is invisible
+by design: a tool runs and the result goes into a model's context, leaving no
+trace on the page. `packages/studio/src/webmcp/call-log.ts` is a 200-entry ring
+buffer written from inside `execute`. It records the tool name, an argument
+preview, duration in ms, the read/write badge taken from the same serialized
+annotations used at registration, and — the part that matters — **schema
+failures the host rejected before the tool body ran**, marked `rejected`. Those
+calls are invisible everywhere else: nothing changed, so no document edit and no
+activity entry exist to hint at them.
 
-**[0:40 — agent picks it up: get_work_context, then a plan]**
-"My agent calls get_work_context first. It gets the brief, my current selection,
-my recent edits, the open review queue, and a working agreement: agent edits are
-attributed and undoable, my edits from the last ten minutes are protected, raw
-data stays local, and uncertain changes need my approval. Then it publishes a
-plan, and I watch the steps tick over."
+**The page reports its own WebMCP state.** The ChatGPT in-app browser has no
+devtools, so `apps/web/components/chrome/agent-diagnostics.tsx` prints a
+copyable report: `document.modelContext` present, `navigator.modelContext`
+present, expected vs `ready` vs `registering` vs `failed` vs never-reported tool
+counts with the failure message per tool, secure context, cross-origin
+isolation, WebAssembly, `SharedArrayBuffer`, and the data-engine status. `?diag=1`
+opens it, so a bug report is one URL.
 
-**[1:05 — the decision card]**
-"Here is the part I care about. It hits a real ambiguity: do we count churn by
-subscription or by revenue? Instead of guessing, it calls request_decision. Two
-clear options, its own recommendation, and space for my note. I answer, and the
-answer flows back to the agent on its next context read."
+**Host reality is handled, not assumed.** The hook resolves
+`document.modelContext` with a `navigator.modelContext` fallback; if a host
+injects `modelContext` after hydration it re-checks once per second and
+registers on the first real attempt; it tolerates hosts that call
+`execute(input)` with no options object and falls back to the
+registration-lifetime `AbortSignal`; and it turns a thrown error into
+`{ error }` so the model reads actionable text instead of an opaque failure.
 
-**[1:35 — change set, skip a row, approve, undo]**
-"Its work arrives as a change set, not as edits. Four related changes, each with
-its reason, and nothing has touched my dashboard yet. I drop the one I do not
-want and approve the rest. Only now do the tiles land, marked as the agent's
-work, in the activity log, and undoable with one keystroke — the whole set, in
-one step. On its next read, the agent sees exactly which rows I kept.
+**353 unit tests pass** across 22 files (`packages/studio` 234, `packages/workspace`
+79, `packages/datasource` 40), next to 43 Playwright end-to-end tests in 14 spec
+files. 28,150 lines of source and 7,718 lines of tests.
 
-**[2:05 — conflict rule]**
-"And it cannot run me over. I just retitled this tile. When the agent tries to
-change the same property, it gets a conflict and has to ask."
+---
 
-**[2:25 — Approvals, Audit log, Data health]**
-"Approvals, the audit log, datasets, the semantic model, lineage: every one
-reads live state. No invented refresh schedules, no fake owners, no assistant
-persona, because WebMCP does not tell the page which agent is calling."
+## 2. Execution
 
-**[2:45 — status pill, repo]**
-"The status pill reports real registration results, not feature detection.
-Forty tools, and up to forty-six: the toolbelt grows while a tile is selected
-or a review is open. AGPL open source, built
-on the stack of our billing product. This is what a shared workspace looks like
-when the human stays in charge."
+> *"Does the project deliver a working or runnable project that has a complete,
+> coherent product experience — not just a technical proof of concept?"*
 
-## Judge testing instructions (paste into the submission form)
+Kontier RI is the analytics workspace of **Kontier**, a production multi-tenant
+billing platform. It is not a standalone demo, and the workspace is not a toy
+state container.
 
-Option A — ChatGPT in-app browser (recommended, zero setup):
-1. Open the ChatGPT app, open its built-in browser, and go to: <LIVE_URL>
-2. The status pill in the top bar reads "Agent ready". Hover it: the tooltip
-   states how many tools registered. It reports real registration results, so a
-   failure shows "Agent setup issue" with the failing tool names.
-3. Load the demo dashboard (24 months of synthetic SaaS billing data), pick a
-   template, or upload your own CSV or Parquet. Your file stays in the browser.
-4. In the agent panel on the right, type a brief and press **Share brief**, for
-   example: "Explain the March churn spike and show the evidence."
-5. Tell the agent: "Pick up the active brief in Kontier RI. Read
-   get_work_context first, share a plan, and use request_decision when my
-   judgment is needed." (The panel has a "Copy handoff prompt" button with
-   exactly this text.)
-6. Watch the loop: the plan appears in the Suggestions tab; open **Approvals**
-   in the left rail to answer any decision and to approve or reject proposals.
-   Nothing touches the dashboard until you approve.
-7. Try the staged change set. Ask: "Group the rest of the work into one change
-   set with propose_change_set, with a note per action." A review card appears
-   with one diff row per action. **Untick one row**, then press Approve: only
-   the kept rows are applied, the set is marked partially applied, and ONE
-   Cmd+Z reverts the whole set. Ask the agent to read `get_work_context` again
-   — it sees your verdict and which rows ran. If you comment instead of
-   approving, the agent can call `revise_change_set`; that tool exists only
-   while the set is open.
-8. Check control: approved changes appear in **Audit log** attributed to the
-   agent, with undo. Edit a tile title yourself, then ask the agent to change
-   the same title. It gets a conflict and must ask you.
-9. Author something yourself: press **Add visual**, pick a dataset, a group-by
-   field, a measure and a visual type. The preview runs the real query. Adding
-   commits one undoable human command — the same command layer the agent
-   uses. When the session completes, it is listed on Home under **Past
-   investigations** (local to your browser, clearable).
-10. Check the guard rails: ask it to DROP a table (the SELECT-only guard
-   refuses), or send a malformed tile spec (strict zod schemas reject it with a
-   readable error).
-11. Optional depth: watch the toolbelt change. Select a tile and 3
-   selection-scoped tools register (40 -> 43); while a change set waits for
-   review, 2 more register; while a question waits, 1 more — 46 at the
-   maximum, and each bundle disappears when its queue empties. Then
-   brush a date range or click a bar to cross-filter, open ⌘K, visit the
-   "Growth drivers" page for combo, scatter, heatmap and a calculated-field KPI,
-   and look at **Data health** for tile-to-dataset lineage.
+**The server is the system of record.** `packages/workspace` defines one
+`WorkspaceStore` seam covering dashboards, version snapshots, investigation
+records, an ordered command log and presence. Two implementations exist —
+`LocalWorkspaceStore` and `HttpWorkspaceStore` — and both are proved by the
+*same* shared conformance suite, `describeWorkspaceStoreContract`. That is what
+makes the seam real: the identical contract is driven once against browser
+storage and once against the REST API through a mock server — 79 passing tests
+in total (39 local, 40 HTTP).
 
-Option B — Google Chrome 149+:
-1. chrome://flags/#enable-webmcp-testing -> Enabled -> restart Chrome.
-2. Open <LIVE_URL> and drive it with a WebMCP-capable agent or the Model
-   Context Tool Inspector extension. Same flow as above.
+**Ordering is a server property.** `seq` is assigned by the server, never by a
+client. It is strictly increasing from 1 per dashboard, which gives every
+participant — human or agent — the *same total order* of events. `at` is a
+client clock and is kept for display only. A reader polls
+`GET /api/workspace/dashboards/:id/commands?since=<cursor>` and applies entries
+in `seq` order. The cursor stays monotonic even after the 1000-entry log evicts
+its oldest rows. 6 route files, 13 handlers, bearer-token auth with a
+constant-time digest compare, one token = one workspace, atomic
+temp-file-plus-rename writes, and a per-workspace promise chain so two requests
+can never interleave a read-modify-write.
 
-Without a WebMCP host, the workspace still works as a human BI tool: the status
-pill reads "Connect agent" and every surface stays usable.
+**The signature moment.** An agent calls `propose_change_set` with 1 to 8
+related edits and a written reason per row. **Nothing runs on propose.** A
+different human opens the card, unticks the rows they disagree with, and
+approves the rest. What happens then is the whole point:
 
-No login, no credentials, free of charge. All SQL runs locally through
-DuckDB-WASM; the agent only sees the row-capped results of tools it calls.
+- The approved rows run through the same command layer as human edits.
+- A version snapshot named `Before "<title>"` is saved first, automatically.
+- The result collapses into **one undo entry and one activity entry**,
+  attributed to the agent — Cmd+Z reverses the entire approved set.
+- The set is recorded as `applied` or `partially_applied` **with the exact row
+  indexes that ran**, so the agent can see on its next read what the human kept
+  and what they dropped.
+- If any row fails mid-apply, the document, undo stack, redo stack, activity
+  log and selection are all restored exactly, and nothing is applied.
 
-## Reproducible checks
-```bash
-pnpm install
-pnpm -r test                # 253 unit tests (datasource 40, studio 213)
-pnpm --filter web test:e2e  # 33 Playwright tests, including the full
-                            # brief -> plan -> decision -> change set -> complete loop
-pnpm -r typecheck
-pnpm -r build
+**The contract is enforced, not advertised.** A human edit is protected for 10
+minutes: an agent tool that would overwrite a property the human just touched
+returns a conflict notice telling the agent to ask, unless the human explicitly
+approved it. `get_work_context` is the tool an agent must call first; it returns
+the brief, the shared plan, pending reviews, decisions at every status, the
+change sets with their verdicts, the human's live focus (active page, selection,
+hover, cross-filter, brushed range, recent human edits), the last 10 actions,
+and
+a four-rule working agreement in plain text.
+
+**Queries are fast because of a deliberate accelerator, not because of the
+thesis.** DuckDB-WASM runs in the tab and range-reads remote Parquet over HTTP.
+The live proof — synthetic billing events, verified against the hosting
+manifest: **100,000,000 rows, 510,748,390 bytes, 8 hive-partitioned quarterly
+files, ZSTD, 4,000,000-row row groups**. Predicates prune 7 of 8 files; the page fetches megabytes, not half a
+gigabyte, and the "MB fetched" figure comes from byte-level accounting of the
+worker's own requests. This is a performance choice. Swap the engine and the
+product still works.
+
+Stack: Next.js 16.1.6, React 19.2, zod 4.3, zustand 5, TypeScript 5.9.3, pnpm
+workspace, AGPL-3.0-only. Deployment target: a Node container at
+**https://ri.kontier.eu**.
+
+---
+
+## 3. Potential Impact
+
+> *"Does the project make a credible, specific case for solving a real problem
+> for a real audience — and does the solution actually address that problem
+> based on what's demonstrated?"*
+
+**The audience is specific.** Revenue and finance owners at subscription
+businesses, and the data people who serve them. We are one of them: Kontier is a
+billing platform, and revenue investigation — "why did churn spike in March?" —
+is the request our own customers cannot self-serve.
+
+**The problem is specific.** Every agent-plus-analytics product today makes the
+same trade. Either the agent writes into your document and you cannot tell what
+it changed, or it hands you a chat transcript and you do the work again by hand.
+Neither survives contact with a team, because a team needs to know *who* changed
+*what*, *who approved it*, and *how to undo it*. That is not a model problem. It
+is a missing consent primitive.
+
+**Kontier RI ships that primitive.** The WebMCP draft points at this gap with
+`requestUserInteraction()`: pause a tool call and ask the user. Our approval
+queue is a working version of the same idea, and it goes further — consent
+survives the call. It is durable, batched, partial, and reviewable by someone
+other than the person who started the agent. Today an agent that wants to
+change a page either just changes it, or asks in text nobody can audit. Here,
+consent is a product
+object with an id, a status, a rationale per row, a recorded verdict (`applied`,
+`partially_applied` or `rejected`) with the exact rows that ran, and an
+automatic version snapshot.
+
+**What people and agents can do together that was hard or impossible before:**
+
+1. **A human reviews another actor's proposal, row by row.** The proposer is an
+   agent; the reviewer is a different person; the approval is partial. Chat UIs
+   cannot express "approve rows 1, 2 and 4, drop row 3", and a headless API
+   cannot ask.
+2. **Human gestures become agent context.** Brush a date range or cross-filter a
+   bar, and `get_user_focus` / `get_work_context` hand the agent exactly what you
+   are pointing at. You stop describing what you mean.
+3. **Agents work under an order everyone shares.** The server assigns `seq`, so
+   two agents and two humans editing the same report converge on the same
+   history instead of racing on wall-clock timestamps.
+4. **Agent work is reversible as one act.** Eight approved edits are one undo
+   entry. Reviewing stops being scary, so people actually let agents do work.
+5. **The failures are visible.** The call ledger shows tool calls the host
+   rejected on schema validation. Anyone can tell a working integration from a
+   broken one without a debugger.
+
+Kontier RI is AGPL open source, and the shape generalizes: any web app that
+wants agents to write to it needs propose → review → attributed apply → undo.
+
+---
+
+## 4. Creativity & Ambition
+
+> *"How creative and novel is the concept and does the project differ from
+> existing concepts?"*
+
+Most WebMCP work so far wires an agent to an existing UI. Kontier RI asks the
+next question: **what does a document look like when it is co-owned by people
+and agents?**
+
+The novel moves:
+
+- **Consent is a first-class object, not a modal.** A change set has an id, 1–8
+  rows, a reason per row, a status, applied row indexes, a snapshot, and an undo
+  entry. It is data an agent can read back, revise (`revise_change_set`), or
+  retract (`withdraw_change_set`).
+- **The toolbelt is a function of page state.** Registration is not a static
+  catalog. Tools appear because a tile is selected, a proposal is pending, or a
+  question is unanswered — and vanish when that state ends. There is also a
+  phase-keyed toolbelt (`PHASE_TOOL_SCOPES`) with six phases: `ready`,
+  `planning`, `working`, `review`, `complete`, `paused`. Reads are never scoped
+  away, because an agent must always be able to orient itself.
+- **The page audits the protocol.** A tool ledger and a diagnostics report make
+  an invisible protocol visible to the human sitting in front of it. We have not
+  seen another WebMCP project do this.
+- **Two implementations behind one seam, proved by one suite.** Browser storage
+  and a REST API pass identical conformance tests, so "shared workspace" is a
+  deployment choice and never a different product.
+- **The hard case on purpose.** Revenue investigation forces the agent to read
+  schemas, write SQL, build UI, and defend a judgement call. A to-do app would
+  have been easier and would have proved nothing.
+
+Ambition check: this is not a weekend prototype bolted onto a demo. It is the
+analytics surface of a production billing platform, with 353 unit tests, 43
+end-to-end tests, and a documented tool catalog (`docs/TOOLS.md`).
+
+---
+
+## What to try in 60 seconds
+
+Open **https://ri.kontier.eu** in Chrome 149+ with
+`chrome://flags/#enable-webmcp-testing` enabled, or in the ChatGPT in-app
+browser.
+
+| # | Time | Do this | What proves it worked |
+|---|---|---|---|
+| 1 | 0:00 | Look at the status pill in the top bar. | It reads "Agent ready", or "Connecting N/40", or "Agent setup issue" with the failing tool names. Hover it for the registered count; click it, or add `?diag=1`, for the full per-tool report. |
+| 2 | 0:10 | Ask the agent: *"Call get_work_context, then propose a change set that adds a churn drill-down and annotates the March dip."* | A change-set card appears in the agent rail (**Suggestions** tab) with one row per edit and a reason per row. Nothing on the canvas moved. |
+| 3 | 0:25 | Untick one row. Press **Approve**. | Only the ticked rows land. The tiles carry an agent chip. The activity log gains **one** entry, not four. |
+| 4 | 0:40 | Press **Cmd+Z** once. | The entire approved set reverses in one step. |
+| 5 | 0:50 | Open the agent rail's **Activity** tab and scroll to the tool call log. | Every call the agent made, with duration in ms, a read/write badge, and any call the host rejected on schema validation. |
+| 6 | 0:55 | Click a tile to select it. | The expected tool count in the pill rises by 3. Deselect and it drops back. |
+
+Bonus (10 seconds): open the **100M-row scale proof** page and watch three
+charts resolve against 511 MB of remote Parquet over HTTP range reads.
+
+---
+
+## How WebMCP was implemented
+
+**Files that matter**
+
+| Path | What it does |
+|---|---|
+| `packages/studio/src/webmcp/useWebMCPTool.ts` | The hook. Resolves `document.modelContext`, zod → JSON Schema, re-validation inside `execute`, `AbortController` unregistration, per-tool lifecycle status, ledger hook. |
+| `packages/studio/src/webmcp/tools.ts` | All 46 tool definitions, plus `STATIC_TOOL_NAMES` / `DYNAMIC_TOOL_NAMES` / `PROPOSAL_TOOL_NAMES` / `DECISION_TOOL_NAMES` and `PHASE_TOOL_SCOPES`. |
+| `packages/studio/src/webmcp/WebMCPTools.tsx` | Mounts the static 40 from the top-level page (one hook call per tool). |
+| `packages/studio/src/webmcp/SelectedTileTools.tsx` | Selection-scoped bundle (3 tools): mounts on select, unmounts on deselect. |
+| `packages/studio/src/webmcp/PhaseScopedTools.tsx` | Proposal-scoped (2) and decision-scoped (1) bundles, keyed on the live review queue. |
+| `packages/studio/src/webmcp/call-log.ts` | The 200-entry tool call ledger, including host-rejected calls. |
+| `packages/studio/src/store.ts` | Command layer: attribution, undo/redo, activity log, `proposeChangeSet` / `applyChangeSet(skipIndexes)`, 10-minute human-edit protection. |
+| `packages/workspace/src/` | The `WorkspaceStore` seam, `HttpWorkspaceStore`, and `describeWorkspaceStoreContract`. |
+| `apps/web/app/api/workspace/**` | The REST API: dashboards, versions, the ordered command log, investigations, presence. |
+| `apps/web/components/presence/change-set-card.tsx` | The review UI: per-row tick boxes, Approve, Reject. |
+| `apps/web/components/chrome/agent-diagnostics.tsx` | The live WebMCP self-report. |
+| `docs/TOOLS.md` | The full tool catalog. |
+
+**The registration call itself** (`packages/studio/src/webmcp/useWebMCPTool.ts`):
+
+```ts
+mc.registerTool(
+  {
+    name,
+    description,
+    inputSchema: JSON.parse(schemaKey) as object,   // z.toJSONSchema(zodSchema)
+    annotations: JSON.parse(annotationsKey) as {
+      readOnlyHint?: boolean;
+      untrustedContentHint?: boolean;
+    },
+    execute: makeToolExecute(
+      () => zodRef.current,                        // same zod schema, re-validated
+      (input, signal) => executeRef.current(input as z.output<S>, signal),
+      controller.signal,                           // fallback when the host omits options
+      (entry) => recordToolCall({ name, ...entry }), // ledger, including rejects
+    ),
+  },
+  { signal: controller.signal },                    // unmount unregisters
+)
+  .then(() => onStatusChangeRef.current?.("ready"))
+  .catch((err) => {
+    if (controller.signal.aborted) return;          // unmount race: expected
+    onStatusChangeRef.current?.("failed", err);
+  });
 ```
+
+And the validation seam every call passes through (`makeToolExecute`, same file):
+
+```ts
+const parsed = getSchema().safeParse(rawInput);
+if (!parsed.success) {
+  const error = `Invalid input: ${parsed.error.message}`;
+  onCall?.({ args: rawInput, startedAt: attemptedAt, durationMs: 0,
+             thrown: error, rejected: true });      // rejected calls are logged too
+  return { error };
+}
+```
+
+---
+
+## Screenshot shot list
+
+Capture these exact UI states. Each one has to read on its own, because judges
+may score from images alone.
+
+1. **The change-set card, mid-review.** Agent rail, **Suggestions** tab. One
+   row unticked and greyed, the rest ticked, the "AI · Browser agent" chip
+   visible, the rationale visible, Approve and Reject buttons in frame.
+2. **The same report one second after Approve.** New tiles on the canvas with
+   agent attribution chips, and the activity feed showing **one** entry reading
+   `Applied change set: "<title>" (N changes)`.
+3. **The tool call log.** Agent rail, **Activity** tab, below the activity
+   feed. At least 6 rows: a read with a read-only badge, a write, a non-zero
+   duration in ms, and **one rejected row** from a schema failure. This is the
+   single most convincing image in the submission.
+4. **The agent diagnostics dialog.** `?diag=1`. `document.modelContext: true`,
+   the expected/ready/failed counts, the user agent line showing the host.
+5. **Tool count changing with selection.** Two frames side by side: nothing
+   selected, then one tile selected and the count 3 higher.
+6. **A decision card with options.** The structured question, 2–5 options, the
+   recommended one marked, and the note field.
+7. **The 10-minute conflict.** The agent's conflict result telling it to ask,
+   next to the title the human just edited.
+8. **The 100M-row scale proof page.** Three charts resolved, with the row count
+   and the MB-fetched readout in frame.
+9. **Version history after an approval.** The auto-saved `Before "<title>"`
+   restore point at the top of the list.
+10. **The workspace header showing the shared workspace it is attached to**,
+    with more than one participant listed.
+
+---
+
+## Verified numbers (source for every figure above)
+
+| Figure | Value | Where it was read |
+|---|---|---|
+| Static tools | 40 | `STATIC_TOOL_NAMES`, `packages/studio/src/webmcp/tools.ts` |
+| Dynamic bundles | 3 + 2 + 1 | `DYNAMIC_TOOL_NAMES`, `PROPOSAL_TOOL_NAMES`, `DECISION_TOOL_NAMES` |
+| Maximum registered | 46 | sum of the four lists |
+| Read tools | 13 | `annotations: READ_ONLY` occurrences; `READS` set in `tool-hints.test.ts` |
+| Write tools | 33 | 46 − 13 |
+| Chrome budgets | 30 / 500 / 150 | `packages/studio/test/tool-budgets.test.ts` |
+| Ledger capacity | 200 entries | `MAX_CALL_LOG_ENTRIES`, `call-log.ts` |
+| Change-set size | 1–8 actions | `proposeChangeSetInput` / `applyChangeSetInput`, `packages/studio/src/schemas.ts` |
+| Human-edit protection | 10 minutes | `HUMAN_EDIT_WINDOW_MS`, `packages/studio/src/store.ts` |
+| Command log cap | 1000 entries | `MAX_COMMAND_ENTRIES`, `apps/web/lib/server/workspace-store.ts` |
+| Presence TTL | 30 s | `PRESENCE_TTL_MS`, same file |
+| API surface | 6 route files, 13 handlers | `apps/web/app/api/workspace/**` |
+| Unit tests | 353 in 22 files | `pnpm -r test` (studio 234, workspace 79, datasource 40) |
+| E2E tests | 43 in 14 spec files | `apps/web/e2e/` |
+| Source lines | 28,150 | `packages/*/src` + `apps/web/{app,components,lib}` |
+| Test lines | 7,718 | `packages/*/test` + `apps/web/e2e` |
+| Scale dataset | 100,000,000 rows | live `manifest.json` on the data host |
+| Scale bytes | 510,748,390 (511 MB) | same manifest |
+| Scale files | 8 hive partitions, ZSTD, 4M-row row groups | same manifest + `scripts/generate-scale-data.sh` |
+| Next.js | 16.1.6 | `apps/web/package.json` |
+
+---
+
+## Claims to re-verify before pasting (delete this section before submitting)
+
+These statements are **not** provable from this repository as of the last read.
+Check each one, or cut it.
+
+1. **`https://ri.kontier.eu` does not resolve yet** (curl returned no HTTP
+   status). The deploy work is in flight: `Dockerfile`, `docker-compose.yml`
+   and `docs/DEPLOY.md` exist but are still untracked. Every "open the URL"
+   instruction depends on this landing.
+2. **"Joins a shared demo workspace as a guest, no signup" is not implemented.**
+   `apps/web/lib/workspace.ts` goes remote only when
+   `NEXT_PUBLIC_WORKSPACE_API` is set **and** a human has pasted a bearer token
+   into local storage. There is no guest path in the code, and
+   `docker-compose.yml` does not set `NEXT_PUBLIC_WORKSPACE_API` at all — so
+   the container would currently boot in browser-only mode.
+3. **The multiplayer loop is not wired into the UI.** `packages/workspace`
+   implements and tests `appendCommands`, `fetchCommands` and `heartbeat`, and
+   the REST routes exist, but no component calls `useWorkspace()`,
+   `fetchCommands()` or `heartbeat()`. Presence today is driven by the local
+   store. Shot 10 and the phrase "more than one participant listed" cannot be
+   captured until this lands.
+4. **The production platform details are outside this repo.** `https://api.kontier.eu/v1`
+   answers `401` (live and authenticated) and `https://kontier.eu` answers `200`.
+   The Go API, Kubernetes on Scaleway, Keycloak SSO and TimescaleDB claims are
+   not evidenced by any file here.
+5. **`get_work_context` still tells the agent "Raw data stays local in the
+   browser."** That line lives in `packages/studio/src/webmcp/tools.ts`. It is
+   true of query results, but it reads like the old local-first positioning.
+6. **`apps/web` has a `test` script but no test files right now**, so
+   `pnpm -r test` exits non-zero at the last package. The 353 figure is the sum
+   of the three packages that do have tests.

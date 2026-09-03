@@ -105,6 +105,8 @@ interface CommandLog {
 export class LocalWorkspaceStore implements WorkspaceStore {
   private readonly storage: KeyValueStorage;
   private readonly now: () => number;
+  /** Highest save stamp issued so far; keeps ordering strict. */
+  private lastStamp = 0;
   private readonly label: string;
   private readonly fixedWorkspaceId: string | undefined;
   /** Used when storage is unwritable, so identity() is still stable per tab. */
@@ -181,9 +183,16 @@ export class LocalWorkspaceStore implements WorkspaceStore {
   }
 
   async saveDashboard(record: DashboardRecord): Promise<DashboardSummary> {
-    const summary = summarizeDashboard(record);
-    this.write(`dashboard:${record.id}`, record);
-    const index = this.readIndex().filter((entry) => entry.id !== record.id);
+    // The store stamps the save time, matching the server contract: whoever
+    // holds the data decides what "newest" means, not the caller's clock.
+    // Monotonic: a clock that does not move (a frozen test clock, or two
+    // saves inside the same millisecond) must still produce a definite
+    // order, or "newest first" silently becomes "insertion order".
+    this.lastStamp = Math.max(this.now(), this.lastStamp + 1);
+    const stamped: DashboardRecord = { ...record, updatedAt: this.lastStamp };
+    const summary = summarizeDashboard(stamped);
+    this.write(`dashboard:${stamped.id}`, stamped);
+    const index = this.readIndex().filter((entry) => entry.id !== stamped.id);
     index.push(summary);
     this.writeIndex(index);
     return summary;

@@ -198,7 +198,22 @@ export function createMockWorkspaceServer(): MockWorkspaceServer {
           return record ? json(record) : errorResponse(404, `Unknown dashboard ${id}`, "not_found");
         }
         if (method === "PUT") {
-          const record = body as DashboardRecord;
+          // The id comes from the PATH and updatedAt is assigned here, which
+          // is what the real API does. This mock used to read both from the
+          // body, so it accepted a request shape the server rejects with 400
+          // — the contract suite passed against a server that did not exist.
+          const sent = body as { name: string; doc: DashboardRecord["doc"] };
+          // Each write gets a later timestamp than the last, because the
+          // STORE owns this clock. A shared workspace cannot let a client's
+          // clock decide what is newest - the same reason `seq` is assigned
+          // here and not sent.
+          server.now += 1;
+          const record: DashboardRecord = {
+            id,
+            name: sent.name,
+            doc: sent.doc,
+            updatedAt: server.now,
+          };
           dashboards.set(id, record);
           const ordered = [...dashboards.values()].sort((a, b) => b.updatedAt - a.updatedAt);
           for (const evicted of ordered.slice(MAX_DASHBOARDS)) dropDashboard(evicted.id);

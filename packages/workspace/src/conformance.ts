@@ -119,22 +119,29 @@ export function describeWorkspaceStoreContract(name: string, makeStore: Workspac
     it("round-trips a dashboard document and derives its counts", async () => {
       const record = makeDashboard({ doc: makeDoc(3, 4) });
       const summary = await store.saveDashboard(record);
-      expect(summary).toEqual({
+      expect(summary).toMatchObject({
         id: record.id,
         name: record.name,
-        updatedAt: record.updatedAt,
         tileCount: 12,
         pageCount: 3,
       });
+      // updatedAt belongs to the store, so it is checked for sanity, not
+      // for equality with whatever the caller happened to send.
+      expect(summary.updatedAt).toBeGreaterThan(0);
       const loaded = await store.loadDashboard(record.id);
       expect(loaded?.doc).toEqual(record.doc);
       expect(loaded?.name).toBe(record.name);
     });
 
-    it("lists dashboards newest first", async () => {
-      await store.saveDashboard(makeDashboard({ id: "dash_old", updatedAt: 100 }));
-      await store.saveDashboard(makeDashboard({ id: "dash_new", updatedAt: 300 }));
-      await store.saveDashboard(makeDashboard({ id: "dash_mid", updatedAt: 200 }));
+    it("lists dashboards newest first, by SAVE time not the caller's clock", async () => {
+      // The store stamps updatedAt. A shared workspace has several clients
+      // with several clocks, so letting a caller claim a timestamp would let
+      // one browser with a fast clock pin itself to the top of everyone's
+      // list. The values passed here are deliberately in the wrong order to
+      // prove they are ignored.
+      await store.saveDashboard(makeDashboard({ id: "dash_old", updatedAt: 300 }));
+      await store.saveDashboard(makeDashboard({ id: "dash_mid", updatedAt: 100 }));
+      await store.saveDashboard(makeDashboard({ id: "dash_new", updatedAt: 200 }));
       const list = await store.listDashboards();
       expect(list.map((entry) => entry.id)).toEqual(["dash_new", "dash_mid", "dash_old"]);
     });

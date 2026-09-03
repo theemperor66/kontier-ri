@@ -31,12 +31,18 @@ import {
 } from "react";
 import type { PresencePeer, WorkspaceStore } from "@kontier-ri/workspace";
 import { useDashboardStore } from "@/lib/dashboard-store";
-import { currentDashboardId, flushPersist } from "@/lib/dashboards";
+import {
+  currentDashboardId,
+  flushPersist,
+  saveDashboardDoc,
+  setCurrentDashboard,
+} from "@/lib/dashboards";
 import {
   actorId,
   currentSession,
   displayName,
   storeForSession,
+  storeSession,
   subscribeSession,
   type WorkspaceSession,
 } from "@/lib/workspace-session";
@@ -85,8 +91,45 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const me = useMemo(() => actorId(), []);
   const cursorRef = useRef(0);
   cursorRef.current = cursor;
+  /**
+   * The save stamp of the document version this tab is currently showing.
+   *
+   * Commands alone are not enough to stay in step. Loading a demo, restoring
+   * a version or importing a report changes the document without producing an
+   * activity entry, so a peer watching only the command stream would sit on a
+   * stale report forever and never learn why. The dashboard's updatedAt moves
+   * for every write, so it is the honest trigger.
+   */
+  const seenUpdatedAt = useRef(0);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
+
+  /**
+   * Make sure this tab is on the workspace's report rather than its own.
+   * Returns the dashboard id now in use, or null when the workspace is still
+   * empty and this tab should keep whatever it has.
+   */
+  const joinWorkspaceReport = useCallback(
+    async (activeStore: WorkspaceStore): Promise<string | null> => {
+      const localId = currentDashboardId();
+      const remote = await activeStore.listDashboards();
+      const newest = remote[0];
+      if (!newest) return null;
+      // Same report and nothing newer than what is on screen: nothing to do.
+      if (newest.id === localId && newest.updatedAt <= seenUpdatedAt.current) {
+        return localId;
+      }
+      const record = await activeStore.loadDashboard(newest.id);
+      if (!record) return null;
+      flushPersist();
+      saveDashboardDoc(newest.id, record.doc as never);
+      setCurrentDashboard(newest.id);
+      useDashboardStore.getState().resetDashboard(record.doc as never);
+      seenUpdatedAt.current = record.updatedAt;
+      return newest.id;
+    },
+    [],
+  );
 
   /** Adopt the server's document for the dashboard this tab is showing. */
   const adoptServerDoc = useCallback(
@@ -97,6 +140,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       // server has seen this tab's work before the tab adopts someone else's.
       flushPersist();
       useDashboardStore.getState().resetDashboard(record.doc as never);
+      seenUpdatedAt.current = record.updatedAt;
     },
     [],
   );
@@ -115,7 +159,21 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setError(null);
     void (async () => {
       try {
-        await store.identity();
+        const identity = await store.identity();
+        // An invite link carries only a token, so this is where a joined tab
+        // learns which workspace it is actually in, and what to call it.
+        if (!cancelled && identity.workspaceId !== session.workspaceId) {
+          storeSession({
+            ...session,
+            workspaceId: identity.workspaceId,
+            label: identity.label,
+          });
+        }
+        // Join the workspace's report, not this browser's private one. Two
+        // people who follow the same invite link must land on the SAME
+        // dashboard or they will never see each other's work — each tab
+        // would keep editing whatever its own localStorage last chose.
+        if (!cancelled) await joinWorkspaceReport(store);
         if (!cancelled) setState("live");
       } catch (err) {
         if (cancelled) return;
@@ -135,18 +193,24 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const tick = async () => {
-      const dashboardId = currentDashboardId();
-      if (!dashboardId) {
-        timer = setTimeout(tick, SYNC_POLL_MS);
-        return;
-      }
       try {
+        // Re-check membership every tick, not once at connect. Someone who
+        // opens the invite link BEFORE anyone has saved anything would
+        // otherwise sit on their own blank report forever, connected and
+        // alone, while the workspace filled up beside them.
+        const joined = await joinWorkspaceReport(store);
+        const dashboardId = joined ?? currentDashboardId();
+        if (!dashboardId) {
+          timer = setTimeout(tick, SYNC_POLL_MS);
+          return;
+        }
         const page = await store.fetchCommands(dashboardId, cursorRef.current);
         if (stopped) return;
         const remote = page.entries.filter((entry) => entry.actor !== me);
         if (remote.length > 0) {
           await adoptServerDoc(store, dashboardId);
         }
+        if (stopped) return;
         if (page.cursor !== cursorRef.current) setCursor(page.cursor);
         setError(null);
       } catch (err) {
@@ -162,7 +226,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [store, state, me, adoptServerDoc]);
+  }, [store, state, me, adoptServerDoc, joinWorkspaceReport]);
 
   // Push: save the document and report this tab's commands, so the other
   // participants have something to poll for. Without this half the loop is
@@ -188,12 +252,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       inFlight = true;
       try {
         const snapshot = useDashboardStore.getState();
-        await store.saveDashboard({
+        const saved = await store.saveDashboard({
           id: dashboardId,
           name: snapshot.doc.title,
           updatedAt: Date.now(),
           doc: snapshot.doc as never,
         });
+        // Remember our own stamp, or the next poll would treat this tab's
+        // own write as a peer's and reload the report under the user.
+        seenUpdatedAt.current = Math.max(seenUpdatedAt.current, saved.updatedAt);
         const fresh = snapshot.activityLog.filter(
           (entry) => !pushed.has(entry.id),
         );

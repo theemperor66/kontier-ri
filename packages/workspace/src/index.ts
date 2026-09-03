@@ -38,12 +38,8 @@ export type { KeyValueStorage, LocalWorkspaceStoreOptions } from "./local";
 export { HttpWorkspaceStore } from "./http";
 export type { FetchLike, HttpWorkspaceStoreOptions } from "./http";
 
-export {
-  describeWorkspaceStoreContract,
-  makeCommand,
-  makeDashboard,
-  makeDoc,
-  makeInvestigation,
-  makeVersion,
-} from "./conformance";
-export type { WorkspaceStoreFactory } from "./conformance";
+// NOTE: ./conformance is deliberately NOT re-exported here. It imports
+// `vitest`, so anything that re-exports it drags the test runner into every
+// consumer's bundle — which is exactly what happened: importing this package
+// from the web app made the dev server answer 500 with "Vitest failed to
+// access its internal state". Tests import ../src/conformance directly.

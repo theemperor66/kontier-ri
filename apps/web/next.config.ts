@@ -12,7 +12,13 @@ import type { NextConfig } from "next";
 const basePath = process.env.NEXT_BASE_PATH || "";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@kontier-ri/datasource", "@kontier-ri/studio"],
+  transpilePackages: [
+    "@kontier-ri/datasource",
+    "@kontier-ri/studio",
+    // Ships TypeScript source like its siblings; omitting it left the app
+    // running a stale copy of the workspace client after edits.
+    "@kontier-ri/workspace",
+  ],
   // The dev overlay badge floats over the bottom-left tile band, where the
   // canvas shows real state; screenshots and manual QA read the product
   // instead of the toolbar.

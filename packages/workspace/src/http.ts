@@ -94,6 +94,24 @@ function describeErrorBody(text: string): { message: string; code: string | unde
   return { message: text.slice(0, 200), code: undefined };
 }
 
+/**
+ * Read a single object that may or may not arrive inside an envelope.
+ *
+ * The server wraps single items (`{ dashboard: ... }`) so a 404 can still
+ * carry a typed `null`. An earlier client read the bare object, so every
+ * loaded document came back with `doc: undefined` — the report opened empty
+ * and nothing reported an error. Accept both shapes rather than pick a side:
+ * a published contract should tolerate the reading it did not choose.
+ */
+function unwrap<T>(payload: unknown, key: string): T | null {
+  if (payload === null || payload === undefined) return null;
+  if (typeof payload === "object" && key in (payload as Record<string, unknown>)) {
+    const inner = (payload as Record<string, unknown>)[key];
+    return (inner ?? null) as T | null;
+  }
+  return payload as T;
+}
+
 export class HttpWorkspaceStore implements WorkspaceStore {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -211,14 +229,19 @@ export class HttpWorkspaceStore implements WorkspaceStore {
   }
 
   async loadDashboard(id: string): Promise<DashboardRecord | null> {
-    return this.request<DashboardRecord>("GET", `/dashboards/${encodeURIComponent(id)}`, {
+    const payload = await this.request<unknown>("GET", `/dashboards/${encodeURIComponent(id)}`, {
       nullOn404: true,
     });
+    return unwrap<DashboardRecord>(payload, "dashboard");
   }
 
   async saveDashboard(record: DashboardRecord): Promise<DashboardSummary> {
+    // Send only what the server owns the truth about. The id is already in
+    // the path and `updatedAt` is assigned server-side, so including them
+    // made every save fail against a strict body schema — a 400 on the one
+    // request that carries the user's work.
     return this.requireJson<DashboardSummary>("PUT", `/dashboards/${encodeURIComponent(record.id)}`, {
-      body: record,
+      body: { name: record.name, doc: record.doc },
     });
   }
 

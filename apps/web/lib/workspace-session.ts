@@ -87,15 +87,15 @@ function parseSession(raw: string | null): WorkspaceSession | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<WorkspaceSession>;
-    if (
-      typeof parsed.token === "string" &&
-      typeof parsed.workspaceId === "string" &&
-      parsed.token.length > 0 &&
-      parsed.workspaceId.length > 0
-    ) {
+    // The TOKEN is the credential and the only required field. An invite link
+    // carries nothing else, so demanding a workspace id here silently turned
+    // every invited visitor back into a signed-out one. The id and label
+    // arrive from identity() on connect.
+    if (typeof parsed.token === "string" && parsed.token.length > 0) {
       return {
         token: parsed.token,
-        workspaceId: parsed.workspaceId,
+        workspaceId:
+          typeof parsed.workspaceId === "string" ? parsed.workspaceId : "",
         label: typeof parsed.label === "string" ? parsed.label : "Workspace",
         kind: parsed.kind === "tenant" ? "tenant" : "guest",
       };
