@@ -23,6 +23,13 @@ interface UiState {
   /** Navigation rail collapse (design: top-bar panel button). */
   railCollapsed: boolean;
   toggleRail(): void;
+  /**
+   * Set the rail explicitly. Anything that knows the state it WANTS must use
+   * this rather than toggleRail: a toggle in a mount effect flips twice under
+   * React's double-invoked effects and lands back where it started, which
+   * left the rail covering the page on a phone.
+   */
+  setRailCollapsed(collapsed: boolean): void;
   paletteOpen: boolean;
   managerOpen: boolean;
   templatesOpen: boolean;
@@ -70,6 +77,7 @@ export const useUiState = create<UiState>()((set) => ({
   setView: (view) => set({ view }),
   railCollapsed: false,
   toggleRail: () => set((s) => ({ railCollapsed: !s.railCollapsed })),
+  setRailCollapsed: (collapsed) => set({ railCollapsed: collapsed }),
   paletteOpen: false,
   managerOpen: false,
   templatesOpen: false,

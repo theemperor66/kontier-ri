@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * Collaboration e2e: every visible agent state is driven by a real mocked
@@ -25,6 +26,7 @@ const MOCK_MODEL_CONTEXT = `
 `;
 
 async function loadInvestigation(page: Page) {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   const demoButton = page.getByTestId("load-demo");
   await expect(demoButton).toBeEnabled({ timeout: 60_000 });

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * Shell e2e: command palette, templates, page tabs, persistence (build ->
@@ -25,6 +26,7 @@ const MOCK_MODEL_CONTEXT = `
 `;
 
 async function waitReady(page: Page) {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   // DuckDB-WASM boot + demo CSV imports gate everything.
   await expect(page.getByTestId("load-demo")).toBeEnabled({ timeout: 60_000 });

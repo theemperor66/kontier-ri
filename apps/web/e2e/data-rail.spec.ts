@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * Data rail: the human field pane. Fields scaffold real tiles by click and by
@@ -45,6 +46,7 @@ function executeTool(page: Page, name: string, input: unknown): Promise<any> {
 
 async function loadDemo(page: Page) {
   await page.addInitScript(MOCK_MODEL_CONTEXT);
+  await startGuestSession(page, undefined);
   await page.goto("/");
   const demo = page.getByTestId("load-demo");
   await expect(demo).toBeEnabled({ timeout: 60_000 });

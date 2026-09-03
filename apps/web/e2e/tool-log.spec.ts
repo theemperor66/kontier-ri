@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * The tool call ledger: proof, on the page, that WebMCP is doing something.
@@ -26,6 +27,7 @@ const MOCK_MODEL_CONTEXT = `
 `;
 
 async function loadDemo(page: Page) {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   const demoButton = page.getByTestId("load-demo");
   await expect(demoButton).toBeEnabled({ timeout: 60_000 });

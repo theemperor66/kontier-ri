@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * 100M-row scale proof (docs/ENGINEERING-PLAN.md §E1).
@@ -16,6 +17,8 @@ test("scale button registers the remote 100M-row dataset and renders 3 live tile
   test.setTimeout(300_000);
   const pageErrors: string[] = [];
   page.on("pageerror", (err) => pageErrors.push(String(err)));
+
+  await startGuestSession(page, undefined);
 
   await page.goto("/");
 

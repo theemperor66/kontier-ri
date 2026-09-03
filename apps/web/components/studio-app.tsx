@@ -144,6 +144,7 @@ function StudioAppInner() {
   const setAgentPanelTab = useUiState((s) => s.setAgentPanelTab);
   const railCollapsed = useUiState((s) => s.railCollapsed);
   const toggleRail = useUiState((s) => s.toggleRail);
+  const setRailCollapsed = useUiState((s) => s.setRailCollapsed);
   const presentation = useUiState((s) => s.presentation);
   const inspectorOpen = useInspectorState((s) => s.open);
   const hasSelection = useDashboardStore((s) => s.selectedTileId != null);
@@ -152,10 +153,13 @@ function StudioAppInner() {
   // The rail is a permanent column on a workspace-sized screen and an
   // overlay on a phone; start collapsed there instead of covering the canvas.
   useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 1024 && !railCollapsed) {
-      toggleRail();
+    // Idempotent on purpose. This used to toggle, which flips twice under
+    // React's double-invoked mount effects and left the rail open across the
+    // whole phone screen, swallowing every tap on the page beneath it.
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setRailCollapsed(true);
     }
-    // Run once on mount: after that the toggle is the user's decision.
+    // Run once on mount: after that the rail is the user's decision.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

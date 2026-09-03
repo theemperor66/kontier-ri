@@ -32,7 +32,7 @@ import {
 
 type Busy = "guest" | "tenant" | null;
 
-export function SignIn({ onLocalOnly }: { onLocalOnly?: () => void }) {
+export function SignIn({ onDismiss }: { onDismiss?: () => void }) {
   const [busy, setBusy] = useState<Busy>(null);
   const [error, setError] = useState<string | null>(null);
   const [pasting, setPasting] = useState(false);
@@ -188,14 +188,14 @@ export function SignIn({ onLocalOnly }: { onLocalOnly?: () => void }) {
           </p>
         ) : null}
 
-        {onLocalOnly ? (
+        {onDismiss ? (
           <button
             type="button"
-            data-testid="signin-local"
+            data-testid="signin-dismiss"
             className="mt-4 cursor-pointer text-[13px] text-muted-foreground underline decoration-line-2 underline-offset-2 hover:text-foreground"
-            onClick={onLocalOnly}
+            onClick={onDismiss}
           >
-            Keep working in this browser instead
+            Back to my workspace
           </button>
         ) : null}
       </div>

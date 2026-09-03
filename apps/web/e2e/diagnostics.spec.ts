@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * Agent diagnostics: the page reporting its own WebMCP state.
@@ -26,6 +27,7 @@ const MOCK_MODEL_CONTEXT = `
 `;
 
 async function loadDemo(page: Page) {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   const demoButton = page.getByTestId("load-demo");
   await expect(demoButton).toBeEnabled({ timeout: 60_000 });
@@ -75,6 +77,7 @@ test("with a runtime, diagnostics report the live registered tool count", async 
 test("?diag=1 opens diagnostics, so a bug report is a single URL", async ({
   page,
 }) => {
+  await startGuestSession(page, undefined);
   await page.goto("/?diag=1");
   await expect(page.getByTestId("agent-diagnostics")).toBeVisible({
     timeout: 30_000,

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * Chrome e2e (U4/U5/U6): top-bar regroup (Share + overflow menus), menu
@@ -25,6 +26,7 @@ const MOCK_MODEL_CONTEXT = `
 `;
 
 async function waitReady(page: Page) {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   await expect(page.getByTestId("load-demo")).toBeEnabled({ timeout: 60_000 });
 }

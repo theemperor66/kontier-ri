@@ -125,6 +125,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
    */
   const syncedDocJson = useRef("");
   const syncedPresenceJson = useRef("");
+  /**
+   * True while this tab is mid-save.
+   *
+   * Adoption and publishing race each other: a poll can list dashboards
+   * BEFORE a save lands and finish loading AFTER it, then apply that stale
+   * document over edits the user made in between. The symptom is a change
+   * that silently undoes itself a second later, which is the worst possible
+   * bug in an editor. So adoption stands aside while a save is in flight.
+   */
+  const pushInFlight = useRef(false);
 
   const refresh = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -139,6 +149,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
    * own poll — was silently deleting change sets a reviewer had not seen yet.
    */
   const applyServerDoc = useCallback((doc: unknown, updatedAt: number) => {
+    // Re-check on arrival, not only before the fetch: our own save may have
+    // completed while this document was in transit, in which case it is now
+    // the older of the two and must not be applied.
+    if (updatedAt <= seenUpdatedAt.current) return;
+    if (safeJson(doc) === syncedDocJson.current) {
+      seenUpdatedAt.current = Math.max(seenUpdatedAt.current, updatedAt);
+      return;
+    }
     const store = useDashboardStore.getState();
     const keptPresence = store.presence;
     flushPersist();
@@ -155,6 +173,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
    */
   const joinWorkspaceReport = useCallback(
     async (activeStore: WorkspaceStore): Promise<string | null> => {
+      // A save in progress owns the document; let it finish.
+      if (pushInFlight.current) return currentDashboardId();
       const localId = currentDashboardId();
       const remote = await activeStore.listDashboards();
       const newest = remote[0];
@@ -245,7 +265,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const page = await store.fetchCommands(dashboardId, cursorRef.current);
         if (stopped) return;
         const remote = page.entries.filter((entry) => entry.actor !== me);
-        if (remote.length > 0) {
+        if (remote.length > 0 && !pushInFlight.current) {
           await adoptServerDoc(store, dashboardId);
         }
         if (stopped) return;
@@ -304,6 +324,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const dashboardId = currentDashboardId();
       if (!dashboardId) return;
       inFlight = true;
+      pushInFlight.current = true;
       try {
         const snapshot = useDashboardStore.getState();
 
@@ -371,6 +392,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         inFlight = false;
+        pushInFlight.current = false;
       }
     };
 

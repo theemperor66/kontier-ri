@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 test("mobile becomes a readable review surface instead of a compressed desktop grid", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  await startGuestSession(page, undefined);
   await page.goto("/");
 
   await expect(

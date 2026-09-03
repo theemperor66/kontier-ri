@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * Tile inspector e2e (Component Interaction Pack): open/close affordances,
@@ -26,6 +27,7 @@ const MOCK_MODEL_CONTEXT = `
 `;
 
 async function loadDemo(page: Page) {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   await expect(page.getByTestId("load-demo")).toBeEnabled({ timeout: 60_000 });
   await page.getByTestId("load-demo").click();

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * Version history: the report can be rolled back to a snapshot, and agent
@@ -6,6 +7,7 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 async function loadDemo(page: Page) {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   const demo = page.getByTestId("load-demo");
   await expect(demo).toBeEnabled({ timeout: 60_000 });

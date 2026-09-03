@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * Smoke tests: demo dashboard renders real data (DuckDB-WASM in-browser) and
@@ -45,6 +46,7 @@ const FAILING_MODEL_CONTEXT = `
 `;
 
 async function loadDemo(page: Page) {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   // DuckDB-WASM boot + 5 CSV imports can take a while on first load.
   const demoButton = page.getByTestId("load-demo");
@@ -106,6 +108,7 @@ test("WebMCP registers the static tool surface, +3 while a tile is selected", as
 });
 
 test("tools register when a WebMCP host arrives after hydration", async ({ page }) => {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   const status = page.getByTestId("webmcp-status");
   await expect(status).toContainText("Connect agent");
@@ -132,6 +135,7 @@ test("registration failures are visible instead of reporting a false ready state
   page,
 }) => {
   await page.addInitScript(FAILING_MODEL_CONTEXT);
+  await startGuestSession(page, undefined);
   await page.goto("/");
   const status = page.getByTestId("webmcp-status");
   await expect(status).toContainText("Agent setup issue");

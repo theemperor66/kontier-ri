@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { startGuestSession } from "./helpers/session";
 
 /**
  * Guided authoring: the human path to a new tile mirrors the agent's. The
@@ -7,6 +8,7 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 async function loadDemo(page: Page) {
+  await startGuestSession(page, undefined);
   await page.goto("/");
   const demo = page.getByTestId("load-demo");
   await expect(demo).toBeEnabled({ timeout: 60_000 });
