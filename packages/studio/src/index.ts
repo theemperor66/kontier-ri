@@ -85,6 +85,15 @@ export type {
   ToolContext,
   ToolDefinition,
 } from "./webmcp/tools";
+export {
+  MAX_CALL_LOG_ENTRIES,
+  getToolCalls,
+  previewArgs,
+  recordToolCall,
+  resetToolCallsForTest,
+  subscribeToolCalls,
+} from "./webmcp/call-log";
+export type { ToolCallRecord } from "./webmcp/call-log";
 export { WebMCPTools, RegisteredTool } from "./webmcp/WebMCPTools";
 export type { WebMCPToolsProps } from "./webmcp/WebMCPTools";
 export { SelectedTileTools } from "./webmcp/SelectedTileTools";

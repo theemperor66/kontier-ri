@@ -706,7 +706,11 @@ describe("change-set tools", () => {
       readOnlyHint: true,
       untrustedContentHint: true,
     });
-    expect(tools.get("propose_change_set")!.annotations).toBeUndefined();
+    // A mutating tool says so out loud. Silence would leave the agent to
+    // guess whether it should confirm first.
+    expect(tools.get("propose_change_set")!.annotations).toEqual({
+      readOnlyHint: false,
+    });
   });
 
   it("revise_change_set / withdraw_change_set act on the pending set", async () => {

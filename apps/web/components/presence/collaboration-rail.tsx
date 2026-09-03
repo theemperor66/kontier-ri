@@ -24,6 +24,7 @@ import { useDashboardStore } from "@/lib/dashboard-store";
 import { ChangeSetQueue } from "@/components/presence/change-set-card";
 import { useUiState } from "@/lib/ui-state";
 import { useWebMCPRegistry } from "@/lib/webmcp-registry";
+import { ToolCallLog } from "@/components/presence/tool-call-log";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { formatAgo } from "@/lib/format";
@@ -727,8 +728,11 @@ export function CollaborationRail({
               </div>
             </>
           ) : (
-            <div data-testid="activity-feed">
+            <div data-testid="activity-feed" className="space-y-4">
               <ActivityTab />
+              {/* A different question from the one above: not "what changed"
+                  but "what did the agent call". */}
+              <ToolCallLog />
             </div>
           )}
         </div>

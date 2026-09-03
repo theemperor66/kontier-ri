@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import * as z from "zod";
+import { recordToolCall } from "./call-log";
 
 /**
  * Minimal typing for the WebMCP subset we use (see docs/webmcp-api-notes.md);
@@ -85,15 +86,55 @@ export function makeToolExecute(
   getSchema: () => z.ZodType,
   run: (input: unknown, signal: AbortSignal) => Promise<unknown> | unknown,
   fallbackSignal: AbortSignal,
+  /**
+   * Ledger hook. Called once per call the host attempted — including calls
+   * rejected on schema validation.
+   *
+   * Rejected calls are logged deliberately. An agent sending the wrong shape
+   * is one of the named WebMCP failure modes, and it is invisible everywhere
+   * else: the tool never ran, so no document change and no activity entry
+   * exist to hint at it. `rejected` marks that the tool body never executed.
+   */
+  onCall?: (entry: {
+    args: unknown;
+    startedAt: number;
+    durationMs: number;
+    result?: unknown;
+    thrown?: unknown;
+    rejected?: boolean;
+  }) => void,
 ): (rawInput: unknown, options?: { signal?: AbortSignal }) => Promise<unknown> {
   return async (rawInput, options) => {
+    const attemptedAt = Date.now();
     const parsed = getSchema().safeParse(rawInput);
     if (!parsed.success) {
-      return { error: `Invalid input: ${parsed.error.message}` };
+      const error = `Invalid input: ${parsed.error.message}`;
+      onCall?.({
+        args: rawInput,
+        startedAt: attemptedAt,
+        durationMs: 0,
+        thrown: error,
+        rejected: true,
+      });
+      return { error };
     }
+    const startedAt = Date.now();
     try {
-      return await run(parsed.data, options?.signal ?? fallbackSignal);
+      const result = await run(parsed.data, options?.signal ?? fallbackSignal);
+      onCall?.({
+        args: parsed.data,
+        startedAt,
+        durationMs: Date.now() - startedAt,
+        result,
+      });
+      return result;
     } catch (err) {
+      onCall?.({
+        args: parsed.data,
+        startedAt,
+        durationMs: Date.now() - startedAt,
+        thrown: err,
+      });
       return { error: err instanceof Error ? err.message : String(err) };
     }
   };
@@ -158,6 +199,20 @@ export function useWebMCPTool<S extends z.ZodType>(
             () => zodRef.current,
             (input, signal) => executeRef.current(input as z.output<S>, signal),
             controller.signal,
+            (entry) => {
+              // Read the hint from the same serialized copy the registration
+              // used, so the ledger can never disagree with what was declared.
+              const declared = JSON.parse(annotationsKey) as {
+                readOnlyHint?: boolean;
+              };
+              recordToolCall({
+                name,
+                ...entry,
+                ...(declared.readOnlyHint !== undefined
+                  ? { readOnly: declared.readOnlyHint }
+                  : {}),
+              });
+            },
           ),
         },
         { signal: controller.signal },

@@ -100,9 +100,21 @@ export interface ToolDefinition<S extends z.ZodType = z.ZodType> {
   annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
 }
 
-/** Identity helper: per-tool input inference + erased element type. */
+/**
+ * Identity helper: per-tool input inference + erased element type.
+ *
+ * It also stamps the write hint. Chrome's tool-security guidance asks for
+ * `readOnlyHint` on tools that do not change state, so the agent knows when to
+ * ask for confirmation — which means silence on a mutating tool is a missing
+ * declaration, not a neutral one. Every tool in this file that does not opt
+ * into READ_ONLY changes state, so the default is an explicit `false` rather
+ * than `undefined`. `toolsDeclareHints` in the tests holds that invariant.
+ */
 function tool<S extends z.ZodType>(def: ToolDefinition<S>): ToolDefinition {
-  return def as unknown as ToolDefinition;
+  const withHints: ToolDefinition<S> = def.annotations
+    ? def
+    : { ...def, annotations: WRITES };
+  return withHints as unknown as ToolDefinition;
 }
 
 // Read tools can echo dataset names, values, dashboard copy, or human notes.
@@ -112,6 +124,12 @@ const READ_ONLY = {
   readOnlyHint: true,
   untrustedContentHint: true,
 } as const;
+/**
+ * Mutating tools. Declared explicitly so a host can distinguish "this changes
+ * the document" from "this tool never said". Approval still happens in the
+ * product: the hint informs the agent, it does not gate anything.
+ */
+const WRITES = { readOnlyHint: false } as const;
 const VALUE_MAX_CHARS = 120;
 const DESCRIBE_ROW_CAP = 50;
 
