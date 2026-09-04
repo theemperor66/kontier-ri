@@ -141,6 +141,35 @@ function recordCreation(now: number): void {
   window.count += 1;
 }
 
+/**
+ * Issue a session for a workspace that already has a name — a Kontier
+ * organization, say, rather than a fresh anonymous room.
+ *
+ * Shared with the guest path on purpose: one registry, one lookup, one place
+ * where a token becomes a workspace. Two colleagues signing in from the same
+ * organization get different tokens for the SAME workspace id, which is what
+ * makes them land in one room.
+ */
+export function issueSession(
+  workspaceId: string,
+  label: string,
+  kind: "guest" | "tenant",
+  now = Date.now(),
+): CreatedGuest {
+  const token = `${kind === "tenant" ? "ktn" : "gst"}_${randomBytes(32).toString("base64url")}`;
+  const file = readRegistry();
+  const kept = live(file.guests, now);
+  const trimmed = label.trim();
+  const entry: GuestEntry = {
+    digest: sha256Hex(token),
+    workspaceId,
+    label: trimmed.length > 0 ? trimmed.slice(0, 120) : workspaceId,
+    createdAt: now,
+  };
+  writeRegistry({ version: 1, guests: [...kept, entry] });
+  return { workspaceId, token, label: entry.label };
+}
+
 export type CreateGuestResult =
   | { ok: true; guest: CreatedGuest }
   | { ok: false; reason: "disabled" | "rate_limited" | "at_capacity" };
@@ -169,21 +198,15 @@ export function createGuestWorkspace(
     }
   }
 
-  const token = `gst_${randomBytes(32).toString("base64url")}`;
   const workspaceId = `guest_${randomBytes(9).toString("base64url")}`;
-  const trimmed = label.trim();
-  const entry: GuestEntry = {
-    digest: sha256Hex(token),
+  const guest = issueSession(
     workspaceId,
-    label: trimmed.length > 0 ? trimmed.slice(0, 120) : "Guest workspace",
-    createdAt: now,
-  };
-  writeRegistry({ version: 1, guests: [...kept, entry] });
+    label.trim().length > 0 ? label : "Guest workspace",
+    "guest",
+    now,
+  );
   recordCreation(now);
-  return {
-    ok: true,
-    guest: { workspaceId, token, label: entry.label },
-  };
+  return { ok: true, guest };
 }
 
 /** Resolve a bearer token to a guest workspace, or null. */

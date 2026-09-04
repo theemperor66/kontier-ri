@@ -24,7 +24,7 @@ test("a first-time visitor is asked to choose a workspace, not dropped into a lo
   await expect(page.locator("[data-tile-type]")).toHaveCount(0);
 
   // And the consequence of a guest workspace is stated before one exists.
-  await expect(page.locator("body")).toContainText("The link is the only key");
+  await expect(page.locator("body")).toContainText("that link is the only key");
 });
 
 test("choosing a guest workspace lands in a real, server-backed report", async ({
@@ -47,23 +47,54 @@ test("choosing a guest workspace lands in a real, server-backed report", async (
   await expect(page.getByTestId("share-workspace")).toBeVisible();
 });
 
-test("the Kontier tenant button puts everyone in the same shared workspace", async ({
+test("the shared demo workspace puts everyone in the same room", async ({
   page,
 }) => {
   await page.goto("/");
   const response = await page.request.post("/api/workspace/tenant");
   if (response.status() === 503) {
-    test.skip(true, "No demo tenant configured on this deployment.");
+    test.skip(true, "No demo workspace configured on this deployment.");
   }
   expect(response.status()).toBe(200);
   const tenant = (await response.json()) as { workspaceId: string; kind: string };
   expect(tenant.kind).toBe("tenant");
 
-  await page.getByTestId("signin-tenant").click();
+  await page.getByTestId("signin-demo").click();
   await expect(page.getByTestId("load-demo")).toBeVisible({ timeout: 60_000 });
   const session = await page.evaluate(() =>
     window.localStorage.getItem("kontier-ri:ws:session"),
   );
-  // Everyone who presses it lands in the SAME room - that is the point.
+  // Everyone who opens it lands in the SAME room - that is the point.
   expect(JSON.parse(session ?? "{}").workspaceId).toBe(tenant.workspaceId);
+});
+
+test("Sign in with Kontier starts a real OIDC round trip against Keycloak", async ({
+  page,
+}) => {
+  await page.goto("/");
+  // Do not follow the redirect to a live identity provider in a test; assert
+  // that the request we would make is the correct one. A wrong client id,
+  // a missing PKCE challenge or a plain response_type would all be silent
+  // failures that only show up in front of a real user.
+  await page.route("https://auth.kontier.eu/**", (route) => route.abort());
+  const navigation = page.waitForRequest(
+    (request) => request.url().includes("auth.kontier.eu"),
+    { timeout: 30_000 },
+  );
+  await page.getByTestId("signin-tenant").click();
+  const url = new URL((await navigation).url());
+
+  expect(url.origin + url.pathname).toBe(
+    "https://auth.kontier.eu/realms/kontier/protocol/openid-connect/auth",
+  );
+  expect(url.searchParams.get("client_id")).toBe("kontier-web");
+  expect(url.searchParams.get("response_type")).toBe("code");
+  expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+  expect(url.searchParams.get("code_challenge")?.length ?? 0).toBeGreaterThan(20);
+  expect(url.searchParams.get("scope")).toContain("openid");
+  // The organization claim is what binds a signed-in user to a workspace.
+  expect(url.searchParams.get("scope")).toContain("organization");
+  expect(url.searchParams.get("redirect_uri")).toContain("/auth/callback");
+  expect(url.searchParams.get("state")?.length ?? 0).toBeGreaterThan(10);
+  expect(url.searchParams.get("nonce")?.length ?? 0).toBeGreaterThan(10);
 });
