@@ -126,6 +126,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const syncedDocJson = useRef("");
   const syncedPresenceJson = useRef("");
   /**
+   * Whether this tab has read the workspace's collaboration state yet.
+   *
+   * A tab that has just joined holds an EMPTY presence for a moment. Writing
+   * that before reading published the emptiness over whatever was there —
+   * so a reviewer opening an invite link erased the very proposal they came
+   * to review, and then waited forever for it to appear. Read before write.
+   */
+  const sessionRead = useRef(false);
+  /**
    * True while this tab is mid-save.
    *
    * Adoption and publishing race each other: a poll can list dashboards
@@ -275,6 +284,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         // the document, because a proposal is not part of the report. This
         // is what lets a DIFFERENT human review what an agent proposed.
         const shared = await store.readSession(dashboardId);
+        sessionRead.current = true;
         if (shared && shared.updatedAt > seenSessionAt.current) {
           seenSessionAt.current = shared.updatedAt;
           useDashboardStore
@@ -360,17 +370,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         syncedDocJson.current = docJson;
 
         // Publish proposals, decisions and the plan so another human can act
-        // on them. Same echo guard: our own write must not read back as a
-        // peer's and re-adopt under us.
-        const publishedSession = await store.writeSession(
-          dashboardId,
-          snapshot.presence,
-        );
-        seenSessionAt.current = Math.max(
-          seenSessionAt.current,
-          publishedSession.updatedAt,
-        );
-        syncedPresenceJson.current = presenceJson;
+        // on them — but never before reading, or a tab that has just joined
+        // overwrites the workspace with the emptiness it arrived holding.
+        if (sessionRead.current) {
+          const publishedSession = await store.writeSession(
+            dashboardId,
+            snapshot.presence,
+          );
+          seenSessionAt.current = Math.max(
+            seenSessionAt.current,
+            publishedSession.updatedAt,
+          );
+          syncedPresenceJson.current = presenceJson;
+        }
 
         const fresh = snapshot.activityLog.filter(
           (entry) => !pushed.has(entry.id),
