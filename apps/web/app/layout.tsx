@@ -31,6 +31,21 @@ const SITE_ORIGIN =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
+  // The same mark, at the same scale, as kontier.eu. Kontier RI is part of
+  // the platform, not a separate product, and a tab strip is where people
+  // notice that first. These are the marketing site's own rasters rather
+  // than a re-export, so the two cannot drift apart.
+  icons: {
+    icon: [
+      { url: withBasePath("/favicon.ico"), sizes: "any" },
+      { url: withBasePath("/icon.svg"), type: "image/svg+xml" },
+      { url: withBasePath("/favicon-16x16.png"), sizes: "16x16", type: "image/png" },
+      { url: withBasePath("/favicon-32x32.png"), sizes: "32x32", type: "image/png" },
+      { url: withBasePath("/favicon-48x48.png"), sizes: "48x48", type: "image/png" },
+      { url: withBasePath("/favicon-96x96.png"), sizes: "96x96", type: "image/png" },
+    ],
+    apple: [{ url: withBasePath("/apple-icon.png"), sizes: "180x180" }],
+  },
   title: TITLE,
   description: DESCRIPTION,
   openGraph: {

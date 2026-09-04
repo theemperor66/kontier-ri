@@ -1,5 +1,26 @@
 # Deploying Kontier RI to Dokploy (https://ri.kontier.eu)
 
+> ## Required once: allow this host in Keycloak
+>
+> "Sign in with Kontier" is a real OIDC round trip against the existing
+> `kontier-web` public client in realm `kontier`. The live client does **not**
+> carry the `https://*.kontier.eu/*` wildcard that
+> `kontorion-infra/stacks/keycloak/import/realm-kontier.json` shows, so
+> Keycloak refuses this host with `Invalid parameter: redirect_uri` until it is
+> added. Verified by probing the authorize endpoint: `app.kontier.eu` and
+> `localhost:3000` are accepted, `ri.kontier.eu` is rejected.
+>
+> In Keycloak admin → realm `kontier` → clients → `kontier-web`:
+>
+> | Field | Add |
+> |---|---|
+> | Valid redirect URIs | `https://ri.kontier.eu/*` |
+> | Web origins | `https://ri.kontier.eu` |
+>
+> Add the same lines to the realm import JSON so a re-import does not undo it.
+> Until this is done the button reaches Keycloak and stops there; guest
+> workspaces and the shared demo workspace are unaffected.
+
 This is the **server** deploy of Kontier RI: a Node container running the
 Next.js production server (`next start`), fronted by Dokploy's Traefik.
 
