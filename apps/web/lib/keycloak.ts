@@ -17,7 +17,12 @@
 
 const ISSUER = "https://auth.kontier.eu/realms/kontier";
 const CLIENT_ID = "kontier-web";
-const SCOPE = "openid profile email organization";
+// Only scopes this realm actually grants. `organization` is in the realm
+// IMPORT file but does not exist on the live server — Keycloak's organization
+// feature is not enabled — and asking for it fails the whole request with
+// invalid_scope. The server still reads an organization claim when one
+// appears, so enabling the feature later needs no change here.
+const SCOPE = "openid profile email";
 const VERIFIER_KEY = "kontier-ri:oidc:verifier";
 const STATE_KEY = "kontier-ri:oidc:state";
 const NONCE_KEY = "kontier-ri:oidc:nonce";

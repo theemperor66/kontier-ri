@@ -102,24 +102,16 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const organization = readOrganization(claims);
   const subject = typeof claims.sub === "string" ? claims.sub : "";
-  if (!organization && subject.length === 0) {
+  if (subject.length === 0) {
     return errorResponse(
       401,
       "unauthorized",
-      "That Kontier account carries no organization, so there is no workspace to open.",
+      "That identity token carries no subject, so there is nobody to sign in.",
     );
   }
-
-  // Organization first, so colleagues share a workspace. A user with no
-  // organization still gets a stable private one rather than a refusal.
-  const workspaceId = organization
-    ? `kontier_org_${slug(organization.id)}`
-    : `kontier_user_${slug(subject)}`;
-  const label = organization
-    ? `Kontier · ${organization.name}`
-    : `Kontier · ${String(claims.preferred_username ?? claims.email ?? "account")}`;
+  const binding = workspaceBinding(claims, subject);
+  const { workspaceId, label } = binding;
 
   const issued = issueSession(workspaceId, label, "tenant");
   return jsonResponse(
@@ -128,7 +120,63 @@ export async function POST(request: Request): Promise<Response> {
   );
 }
 
-/** Filesystem- and URL-safe, and stable for the same input. */
+/**
+ * Decide which workspace a verified identity opens.
+ *
+ * Three rules, most specific first:
+ *
+ *   1. An `organization` claim, when the realm has one. This is the right
+ *      answer and needs no guessing.
+ *   2. A VERIFIED email's domain. Colleagues at one company then land in one
+ *      workspace, which is the whole reason to sign in rather than guest.
+ *      The verification check is not decoration: without it, anyone who can
+ *      register an address at a domain could walk into that company's room.
+ *   3. The subject. A stable private workspace beats a refusal.
+ *
+ * Rule 2 is a heuristic and is documented as one. This realm exposes no
+ * groups, no tenant attribute and no organization scope, so an email domain
+ * is the only tenant signal it actually carries.
+ */
+export function workspaceBinding(
+  claims: Record<string, unknown>,
+  subject: string,
+): { workspaceId: string; label: string } {
+  const organization = readOrganization(claims);
+  if (organization) {
+    return {
+      workspaceId: `kontier_org_${slug(organization.id)}`,
+      label: `Kontier · ${organization.name}`,
+    };
+  }
+
+  const email = typeof claims.email === "string" ? claims.email : "";
+  const verified = claims.email_verified === true;
+  const domain = email.includes("@") ? email.split("@").pop() ?? "" : "";
+  if (verified && domain.length > 0) {
+    return {
+      workspaceId: `kontier_domain_${slug(domain.toLowerCase())}`,
+      label: `Kontier · ${domain.toLowerCase()}`,
+    };
+  }
+
+  const who = String(claims.preferred_username ?? email ?? "account");
+  return {
+    workspaceId: `kontier_user_${slug(subject)}`,
+    label: `Kontier · ${who}`,
+  };
+}
+
+/**
+ * Filesystem- and URL-safe, and stable for the same input.
+ *
+ * Dot runs collapse to a single dot. Replacing separators alone still leaves
+ * `..` intact, and while the store slugs ids again before touching disk,
+ * an id that reads `.._.._etc_passwd` is one careless `path.join` away from
+ * meaning something. Nothing downstream should have to be careful.
+ */
 function slug(value: string): string {
-  return value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 96);
+  return value
+    .replace(/[^A-Za-z0-9._-]/g, "_")
+    .replace(/\.{2,}/g, ".")
+    .slice(0, 96);
 }

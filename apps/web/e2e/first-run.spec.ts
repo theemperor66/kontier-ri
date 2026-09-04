@@ -92,8 +92,11 @@ test("Sign in with Kontier starts a real OIDC round trip against Keycloak", asyn
   expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   expect(url.searchParams.get("code_challenge")?.length ?? 0).toBeGreaterThan(20);
   expect(url.searchParams.get("scope")).toContain("openid");
-  // The organization claim is what binds a signed-in user to a workspace.
-  expect(url.searchParams.get("scope")).toContain("organization");
+  expect(url.searchParams.get("scope")).toContain("email");
+  // Only scopes this realm actually grants. Asking for one it does not have
+  // — `organization` was in the import file but not on the server — fails the
+  // whole request with invalid_scope, which is how this was found.
+  expect(url.searchParams.get("scope")).not.toContain("organization");
   expect(url.searchParams.get("redirect_uri")).toContain("/auth/callback");
   expect(url.searchParams.get("state")?.length ?? 0).toBeGreaterThan(10);
   expect(url.searchParams.get("nonce")?.length ?? 0).toBeGreaterThan(10);
