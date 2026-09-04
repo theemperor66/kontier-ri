@@ -4,42 +4,46 @@
  * WHAT: decides whether this visit starts at the sign-in screen or inside a
  * workspace.
  *
- * WHY it IS a wall now, having briefly not been: the product is a SHARED
- * investigation workspace. Dropping a first-time visitor into a browser-local
- * report shows them the one thing this product is not, and quietly strands
- * their work somewhere nobody else can reach — including them, on their next
- * device. Choosing a workspace is not a settings decision to postpone; it is
- * the first fact everything else depends on.
+ * WHY it is a wall: the product is a SHARED investigation workspace, and
+ * dropping a first-time visitor into a browser-local report shows them the
+ * one thing this product is not.
  *
- * The rules stay few and boring:
- *
- *   1. Already in a workspace   -> work.
- *   2. Arrived on an invite link -> adopt it silently and work. That is
- *                                   exactly what the person who clicked wanted.
+ *   1. Already in a workspace   -> work, immediately. No request first.
+ *   2. Arrived on an invite link -> adopt it silently and work.
  *   3. No workspace API here     -> work. A build with no server cannot offer
  *                                   a sign-in that could succeed.
  *   4. Otherwise                 -> choose a workspace.
  *
- * Rule 3 probes rather than reading a build flag, because the same bundle is
- * served by the container and by any static host, and only a request can tell
- * them apart. An unauthenticated 401 proves the API is there.
+ * NOTHING WAITS ON THE NETWORK TO PAINT. An earlier version returned null
+ * until a probe answered, so a single slow or hanging request left a blank
+ * page for as long as it took — which reads as "loads forever" and is the
+ * worst thing a first screen can do. The sign-in screen renders first and the
+ * probe only ever swaps it away, so the failure mode is a usable screen
+ * rather than an empty one. The probe is also bounded, because a request with
+ * no timeout is a promise to wait forever.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
 import { SignIn } from "@/components/chrome/sign-in";
 import { useUiState } from "@/lib/ui-state";
-import { currentSession, workspaceApiBase } from "@/lib/workspace-session";
-import { subscribeSession } from "@/lib/workspace-session";
+import {
+  currentSession,
+  subscribeSession,
+  workspaceApiBase,
+} from "@/lib/workspace-session";
 
-type Probe = "checking" | "available" | "absent";
+/** Long enough for a cold container, short enough not to feel stuck. */
+const PROBE_TIMEOUT_MS = 5_000;
 
 export function WorkspaceGate({ children }: { children: ReactNode }) {
   const requested = useUiState((s) => s.signInOpen);
   const setRequested = useUiState((s) => s.setSignInOpen);
-  const [hasSession, setHasSession] = useState<boolean | null>(null);
-  const [probe, setProbe] = useState<Probe>("checking");
+  const [hasSession, setHasSession] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [apiAbsent, setApiAbsent] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const read = () => setHasSession(currentSession() !== null);
     read();
     if (new URLSearchParams(window.location.search).get("signin") === "1") {
@@ -48,33 +52,45 @@ export function WorkspaceGate({ children }: { children: ReactNode }) {
     return subscribeSession(read);
   }, [setRequested]);
 
+  // Only matters when signed out: it decides whether to offer a sign-in at
+  // all. A session already proves there is a server.
   useEffect(() => {
+    if (!mounted || hasSession) return;
     let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
     void (async () => {
       try {
         const response = await fetch(`${workspaceApiBase()}/dashboards`, {
-          method: "GET",
           headers: { Accept: "application/json" },
+          signal: controller.signal,
         });
-        if (!cancelled) {
-          setProbe(response.status === 401 || response.ok ? "available" : "absent");
+        // 401 is the healthy answer: the API is there and wants a token.
+        if (!cancelled && response.status !== 401 && !response.ok) {
+          setApiAbsent(true);
         }
       } catch {
-        if (!cancelled) setProbe("absent");
+        // A timeout is NOT proof the API is missing, so this deliberately
+        // does not fall through to local mode. Staying on the sign-in screen
+        // keeps the retry one click away.
+      } finally {
+        clearTimeout(timer);
       }
     })();
     return () => {
       cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
     };
-  }, []);
+  }, [mounted, hasSession]);
 
-  // Hold the first paint until both facts are known. Showing the report and
-  // then yanking it away is worse than a moment of nothing.
-  if (hasSession === null || probe === "checking") return null;
+  // Server render and first paint go to the app so nothing flashes for a
+  // returning visitor, who is the common case.
+  if (!mounted) return <>{children}</>;
+  if (hasSession && !requested) return <>{children}</>;
+  if (apiAbsent && !requested) return <>{children}</>;
 
-  const mustChoose = !hasSession && probe === "available";
-  if (mustChoose || requested) {
-    return <SignIn onDismiss={hasSession ? () => setRequested(false) : undefined} />;
-  }
-  return <>{children}</>;
+  return (
+    <SignIn onDismiss={hasSession ? () => setRequested(false) : undefined} />
+  );
 }

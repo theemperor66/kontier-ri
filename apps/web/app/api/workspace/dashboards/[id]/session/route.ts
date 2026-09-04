@@ -28,8 +28,10 @@ export async function GET(
   if (!id.ok) return id.response;
   return withWorkspace(request, async (store) => {
     const session = await store.readSession(id.data);
-    // 404 carries the typed null, so a client can read the body either way.
-    return jsonResponse({ session }, session ? 200 : 404);
+    // 200 with a null body, not 404. "Nobody has shared anything yet" is a
+    // normal state of this resource, not a missing one, and every polling
+    // client was logging a console error every two seconds for it.
+    return jsonResponse({ session });
   });
 }
 
